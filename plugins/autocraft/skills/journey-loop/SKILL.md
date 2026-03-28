@@ -165,7 +165,7 @@ Common unfixable causes (document these):
 
 ### Step 3: Launch Refiner Agent
 
-After the builder completes, spawn a new Agent with the full content of the refine-journey SKILL.md as the task prompt, substituting the spec path.
+After the builder completes, invoke the `autocraft:refine-journey` skill via the Skill tool, passing the spec path as an argument.
 
 Wait for the refiner to complete. It will:
 - Evaluate the builder's output

@@ -1,6 +1,6 @@
 ---
 name: journey-builder
-description: Build and test the longest uncovered user journey from spec.md. Reads the product spec, checks existing journeys, picks the longest untested path, writes a UI test with screenshots at every step, then runs 3 polish rounds (testability → test refactor → UI review) until everything is clean. Use when the user says "next journey", "add journey", "test the next flow", "journey builder", or "cover more user paths".
+description: Build and test the longest uncovered user journey from spec.md. Reads the product spec, checks existing journeys, picks the longest untested path, writes a UI test with screenshots at every step, then runs 3 polish rounds (testability → refactor UI test → UI review) until everything is clean. Use when the user says "next journey", "add journey", "test the next flow", "journey builder", or "cover more user paths".
 ---
 
 # Journey Builder
@@ -60,8 +60,10 @@ Name files by category: `xcodegen-*.md`, `xcuitest-*.md`, `codesign-*.md`, `swif
 
 Check if the UI test target has the shared helper files. If missing, copy them from the skill templates:
 
+The `{skill-base-dir}` placeholder refers to the plugin root (`plugins/autocraft`).
+
 ```bash
-TEMPLATES="{skill-base-dir}/../templates"
+TEMPLATES="{skill-base-dir}/templates"
 UI_TEST_DIR=$(find . -name "*UITests" -type d -maxdepth 1 | head -1)
 
 # Copy JourneyTestCase base class (snap helper with dedup + window launch fix)
@@ -269,10 +271,6 @@ time xcodebuild test \
   -only-testing:{UITestTarget}/{TestClassName} \
   -resultBundlePath /tmp/test-results.xcresult \
   -quiet 2>&1
-```
-
-```bash
-{skill-base-dir}/scripts/extract-screenshots.sh /tmp/test-results.xcresult journeys/{NNN}-{name}/screenshots
 ```
 
 **Acceptance criteria check:** After the test run, check which mapped acceptance criteria are NOT yet covered. If any are missing, go back to Step 3 and implement them. Do NOT proceed to polish until all mapped criteria have real implementations.

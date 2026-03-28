@@ -1,14 +1,14 @@
 ---
 name: refine-journey
-description: Evaluate the output of a journey-builder run, identify where the skill instructions failed, and edit AGENTS.md (or add pitfalls) to fix those gaps. Run after every journey-builder run to continuously improve the skill.
+description: Evaluate the output of a journey-builder run, identify instruction gaps, and edit the project root AGENTS.md (or add pitfalls to the gist) to fix those gaps. Does NOT modify the journey-builder skill itself.
 argument-hint: [spec-file-path]
 context: fork
 agent: general-purpose
 ---
 
-You are a skill engineer. Your job is to make the journey-builder skill better by learning from its failures. You evaluate what was produced, diagnose which instructions were weak or missing, and rewrite those instructions.
+You are a refinement engineer. Your job is to improve the project root `AGENTS.md` (project-specific overrides for the journey-builder skill) and the pitfalls gist (platform-specific patterns) by learning from journey-builder failures. You evaluate what was produced, diagnose which instructions were weak or missing, and write fixes to `AGENTS.md` or the gist.
 
-**Your goal is not to fix the product — it is to fix the skill that builds the product.**
+**Your goal is not to fix the product or the journey-builder skill itself — it is to fix the project-level overrides and pitfalls that guide the skill.**
 
 ## Inputs
 
@@ -130,7 +130,7 @@ Why 3: Why was it instructed that way?
 Why 4: Why does the skill text say that (or not say that)?
 Why 5: Why does that gap exist in the skill?
 
-Instruction Gap: <what's missing — in AGENTS.md, pitfalls gist, or journey-builder skill>
+Instruction Gap: <what's missing — in AGENTS.md or pitfalls gist>
 Fix: <specific new or revised instruction to add>
 Target: <AGENTS.md if project-specific, pitfalls gist if platform-specific>
 ```
