@@ -56,6 +56,42 @@ EOF
 
 Name files by category: `xcodegen-*.md`, `xcuitest-*.md`, `codesign-*.md`, `swiftui-*.md`, etc.
 
+## Step 0.5: Copy Template Files (macOS only)
+
+Check if the UI test target has the shared helper files. If missing, copy them from the skill templates:
+
+```bash
+TEMPLATES="{skill-base-dir}/../templates"
+UI_TEST_DIR=$(find . -name "*UITests" -type d -maxdepth 1 | head -1)
+
+# Copy JourneyTestCase base class (snap helper + window launch fix)
+if [ -n "$UI_TEST_DIR" ] && [ ! -f "$UI_TEST_DIR/JourneyTestCase.swift" ]; then
+  cp "$TEMPLATES/JourneyTestCase.swift" "$UI_TEST_DIR/"
+fi
+
+# Copy XCUIElementSnapshot extension (batch element checking)
+if [ -n "$UI_TEST_DIR" ] && [ ! -f "$UI_TEST_DIR/XCUIElementSnapshot+Helpers.swift" ]; then
+  cp "$TEMPLATES/XCUIElementSnapshot+Helpers.swift" "$UI_TEST_DIR/"
+fi
+```
+
+After copying, run `xcodegen generate` so Xcode picks up the new files.
+
+Also ensure `project.yml` has these settings on the UI test target (prevents sandbox blocking file writes and missing windows):
+```yaml
+  MyAppUITests:
+    type: bundle.ui-testing
+    settings:
+      base:
+        BUNDLE_LOADER: ""
+        TEST_HOST: ""
+        ENABLE_APP_SANDBOX: "NO"
+    entitlements:
+      path: MyAppUITests/MyAppUITests.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+```
+
 ## Step 1: Check Journey State
 
 Read `journey-state.md` in the project root (create if missing). This file tracks which journeys are complete:
@@ -102,82 +138,68 @@ One test file. Act like a real user. Screenshot after every meaningful step via 
 
 Every journey test MUST use a `snap()` helper that measures the gap since the last screenshot and writes it to a timing file in real-time. This is the enforcer — no gap > 3s goes unnoticed.
 
-**macOS — required snap helper pattern:**
+**macOS — use JourneyTestCase base class (preferred):**
+
+If `JourneyTestCase.swift` was copied in Step 0.5, subclass it:
 ```swift
-// Properties on the test class:
-var screenshotIndex = 0
-var lastSnapTime: CFAbsoluteTime = 0
+final class MyJourneyTests: JourneyTestCase {
+    override var journeyName: String { "001-first-launch-setup" }
 
-// journeyDir must point to the journey folder, e.g.:
-// "\(Self.projectRoot)/journeys/001-first-launch-setup"
-
-/// Takes a screenshot, writes it to disk, and logs timing.
-/// Pass `slowOK: "reason"` for steps with unavoidable delays > 3s.
-private func snap(_ name: String, slowOK: String? = nil) {
-    screenshotIndex += 1
-    let now = CFAbsoluteTimeGetCurrent()
-    let gap = lastSnapTime == 0 ? 0 : now - lastSnapTime
-    lastSnapTime = now
-
-    // Determine timing status
-    let status: String
-    if gap <= 3 {
-        status = "ok"
-    } else if let reason = slowOK {
-        status = "SLOW-OK: \(reason)"
-    } else {
-        status = "SLOW"
+    override func setUpWithError() throws {
+        app.launchArguments = ["-hasCompletedSetup", "NO"]
+        try super.setUpWithError()  // clears timing, creates dirs, launches app, ensures window
     }
 
-    // 1. Capture screenshot
-    let screenshot = app.windows.firstMatch.screenshot()
-
-    // 2. Attach to xcresult (for CI / Xcode results)
-    let attachment = XCTAttachment(screenshot: screenshot)
-    attachment.name = "journey-name-\(name)"
-    attachment.lifetime = .keepAlways
-    add(attachment)
-
-    // 3. Write screenshot PNG to disk immediately
-    let screenshotsDir = "\(journeyDir)/screenshots"
-    try? FileManager.default.createDirectory(
-        atPath: screenshotsDir,
-        withIntermediateDirectories: true
-    )
-    let pngPath = "\(screenshotsDir)/\(name).png"
-    try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: pngPath))
-
-    // 4. Append timing measurement to JSONL (real-time, one line per snap)
-    let timingPath = "\(journeyDir)/screenshot-timing.jsonl"
-    let escapedStatus = status.replacingOccurrences(of: "\"", with: "\\\"")
-    let line = "{\"index\":\(screenshotIndex),\"name\":\"\(name)\",\"gap_seconds\":\(String(format: "%.1f", gap)),\"status\":\"\(escapedStatus)\"}\n"
-    if let data = line.data(using: .utf8) {
-        if FileManager.default.fileExists(atPath: timingPath) {
-            if let handle = FileHandle(forWritingAtPath: timingPath) {
-                handle.seekToEndOfFile()
-                handle.write(data)
-                handle.closeFile()
-            }
-        } else {
-            FileManager.default.createFile(atPath: timingPath, contents: data)
-        }
+    func test_MyJourney() throws {
+        let icon = app.images["myIcon"]
+        XCTAssertTrue(icon.waitForExistence(timeout: 10))
+        snap("001-initial", slowOK: "app launch")
+        // ...
     }
 }
 ```
 
-The `snap()` helper does three things on every call:
-1. **Writes the .png file** to `journeys/{NNN}-{name}/screenshots/` immediately
-2. **Attaches to xcresult** for Xcode/CI visibility
-3. **Appends timing data** to `screenshot-timing.jsonl` — the gap since the last snap, flagged SLOW if > 3s
+`JourneyTestCase` provides:
+- `snap(_:slowOK:)` — screenshot + timing + disk write
+- `takeSnapshot()` — batch element checking (see below)
+- `setUpWithError()` — clears timing, creates dirs, launches app, opens window if needed
+- `tearDownWithError()` — terminates app
 
-**In `setUpWithError()`**, clear the timing file so each run starts fresh:
+### Batch element checking with snapshots (IMPORTANT)
+
+**Problem:** Each `.exists` or `waitForExistence()` call fetches the entire accessibility tree over IPC (~50-100ms each). Ten sequential checks = 10 tree fetches.
+
+**Solution:** After a view transition, take ONE snapshot and check everything against it:
+
 ```swift
-// Clear previous timing data
-let timingPath = "\(journeyDir)/screenshot-timing.jsonl"
-try? FileManager.default.removeItem(atPath: timingPath)
+// Wait for the view to load (1 tree fetch)
+XCTAssertTrue(consentIcon.waitForExistence(timeout: 10))
+snap("001-consent-initial", slowOK: "app launch")
+
+// Take ONE snapshot — all subsequent checks are instant (pure CPU, no IPC)
+let s = takeSnapshot()
+if s.hasDescendant(id: "acceptConsentButton") { snap("002-accept-button") }
+if s.hasDescendant(labelContaining: "records your screen") { snap("003-recording-point") }
+if s.hasDescendant(labelContaining: "stay on your device") { snap("004-privacy-point") }
+if s.hasDescendant(id: "setupStep0") { snap("005-progress-bar") }
+
+// Use live element references for clicks (1 tree fetch per click, unavoidable)
+app.buttons["acceptConsentButton"].click()
+snap("006-accepted")
 ```
 
-The key: `screenshot-timing.jsonl` is written DURING the test, one line per screenshot. After the test finishes, the builder reads this file to find violations.
+**Performance comparison:**
+| Approach | Tree fetches for 10 checks | Time |
+|----------|---------------------------|------|
+| `waitForExistence(timeout: 2)` × 10 | up to 30 | ~20s worst case |
+| `.exists` × 10 | 10 | ~0.5-1s |
+| `takeSnapshot()` once + check × 10 | 1 | ~0.1s |
+
+**Rules:**
+- Use `waitForExistence()` ONLY for the first element after a view transition (navigation, button click that changes views)
+- Use `takeSnapshot()` + `hasDescendant()` for all other existence checks within the same view
+- Use live element references (`app.buttons["id"]`) for clicks — they need current coordinates
+- Take a new snapshot after any action that changes the view (click, navigation)
 
 **Web (Playwright) — equivalent pattern:**
 ```typescript
