@@ -94,7 +94,7 @@ A 10-minute journey should have enough steps to thoroughly exercise the feature.
 
 ## Step 4: Write the test
 
-One test file. Act like a real user. Screenshot after every meaningful step via XCTAttachment (macOS) or Playwright locator screenshot (web). Name: `{journey}-{NNN}-{step}.png`.
+One test file. Act like a real user. Screenshot after every meaningful step via XCTAttachment (macOS) or Playwright locator screenshot (web). Name: `{journey}-{NNN}-{step}.png`. The extract script adds elapsed-time prefixes (`T00m05s_`) automatically — you do NOT add timestamps in code.
 
 **macOS:**
 ```swift
@@ -111,6 +111,31 @@ await page.locator('#app').screenshot({
   path: 'journeys/001-journey-name/screenshots/journey-name-001-step-name.png'
 });
 ```
+
+### Wait-time budget — make tests pleasant to watch
+
+A human watching the test should see constant, snappy activity — never a frozen screen. Follow this timeout budget:
+
+| Situation | Max timeout | Notes |
+|-----------|------------|-------|
+| Element already on screen (tap result, navigation) | **2s** | UI should react instantly |
+| New screen transition (wizard step, tab switch) | **3s** | Animations + layout |
+| Async operation (simulated download, data load) | **5s** | Must show progress indicator |
+| Heavy async (real download, first build) | **30–60s** | Add progress screenshots inside the wait loop |
+
+**Rules:**
+1. **Default timeout is 3s.** Only raise it when you have a concrete reason.
+2. **Every timeout > 3s MUST have a code comment** explaining WHY it needs that long (e.g., `// 30s: simulated model download runs on background thread`).
+3. **Never use a bare `waitForExistence(timeout: 10)` without a comment.** If you cannot explain why 10s is needed, lower it.
+4. **If a wait > 5s is for an async operation**, capture progress screenshots inside the wait loop so the viewer sees activity, not a frozen screen:
+   ```swift
+   // 30s: simulated download — capture progress every 5s
+   for i in 0..<6 {
+       if doneButton.waitForExistence(timeout: 5) { break }
+       snap("042-download-progress-\(i)")
+   }
+   ```
+5. **After writing the test, review every `timeout:` call.** For each one > 3s, confirm the reason is still valid. Remove or lower stale high timeouts from copy-paste.
 
 ## Step 5: Run the test
 
@@ -204,6 +229,7 @@ If any blockers were solved during this run, confirm that new pitfall files were
 - **Load pitfalls first** — Step 0 is not optional. Every session starts by reading the gist.
 - **Add pitfalls for every blocker** — When you find a solution to a non-obvious problem, add it to the gist immediately via `gh gist edit`.
 - **No sleep waits** — NEVER use `sleep()`, `Thread.sleep()`, or fixed-time waits to simulate user reading/thinking time. Use `waitForExistence(timeout:)` or condition-based waits. Tests must finish interactions as fast as possible. Only use a fixed wait (< 1s) when absolutely no element or condition can be checked.
+- **Timeout budget** — Default timeout is 3s. Any `waitForExistence(timeout:)` > 3s MUST have a comment explaining why. Any wait > 5s must capture progress screenshots in a loop so viewers see activity. See Step 4 for the full budget table.
 - **10-minute minimum** — A journey under 10 minutes is not done. Extend it. This is a HARD limit.
 - **Actual durations only** — Never write estimated durations (e.g., `~5m`) to `journey-state.md`. Always measure from the real `xcodebuild test` run.
 - **Work on existing journeys first** — Check `journey-state.md` before creating new ones.

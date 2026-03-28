@@ -53,14 +53,22 @@ Read ALL screenshots in the most recent journey's `screenshots/` folder:
 - **Design quality check:** Apply frontend-design criteria — typography, spacing, alignment, color consistency, visual hierarchy. A screenshot that "works" but looks unpolished is a design failure
 - **Step coverage:** Does every step in `journey.md` have a corresponding screenshot?
 
-### 2d. Journey Quality Check
+### 2d. Wait-Time Audit
+For every `waitForExistence(timeout:)` call in the test code:
+- **timeout > 3s without a comment** → flag as skill failure (missing justification)
+- **timeout > 5s without a progress-screenshot loop** → flag (viewer sees frozen screen)
+- **Consecutive screenshots with > 5s gap** (visible in `T00m00s_` filename timestamps) → flag the step pair and investigate why
+
+Use the timestamped screenshot filenames (`T{mm}m{ss}s_...`) to spot long gaps. If two consecutive screenshots are > 5s apart and the test code has no comment explaining the delay, it must be fixed.
+
+### 2e. Journey Quality Check
 For the most recent journey:
 - Does `journey.md` describe a realistic user path from start to finish?
 - Does the test actually complete the FULL user action and verify its outcome? (A recording test must produce a recording. A search test must find results. A test that stops at "button exists" is incomplete.)
 - Were all 3 polish rounds completed? Check for `testability_review_round{1,2,3}*.md` and `ui_review_round{1,2,3}*.md`
 - Did each round produce NEW timestamped files (not overwritten)?
 
-### 2e. Spec Coverage Check
+### 2f. Spec Coverage Check
 For every requirement in the spec:
 - Is there a journey that covers it?
 - Build a coverage table:
@@ -70,13 +78,13 @@ For every requirement in the spec:
 |-------------|-------------------|-------------|----------------|
 ```
 
-### 2f. Polish Round Quality
+### 2g. Polish Round Quality
 For each of the 3 polish rounds:
 - **Testability:** Were real issues found and fixed? Or was it rubber-stamped?
 - **Refactor:** Is the test code clean — proper waits, stable selectors, accessibility identifiers?
 - **UI Review:** Were design issues actually caught and fixed? Compare round 1 vs round 3 screenshots for visible improvements.
 
-### 2g. Real Outcome Check (CRITICAL)
+### 2h. Real Outcome Check (CRITICAL)
 For each journey test, answer: "Does this test reach the journey's real outcome?"
 - A test that stops at "verify the dialog opened" is testing UI existence, not the feature
 - Every journey test must reach its OUTCOME — produce a recording, find results, play content, delete data, etc.
@@ -137,6 +145,8 @@ Common instruction failure patterns:
 - **Full-screen instead of app-only screenshots** — wrong screenshot API used
 - **No design polish** — UI "works" but looks unpolished, agent didn't apply design criteria
 - **Unnecessary waits** — tests use fixed `sleep` instead of waiting for conditions
+- **Unjustified high timeouts** — `waitForExistence(timeout: 10)` without a comment explaining why 10s is needed
+- **Frozen-screen gaps** — consecutive screenshots > 5s apart with no progress screenshots in between
 - **Wrong journey selection** — picked a trivial path when a longer uncovered path existed
 
 ---

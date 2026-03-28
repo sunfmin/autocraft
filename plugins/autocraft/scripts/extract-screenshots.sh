@@ -59,24 +59,47 @@ if [[ ! -f "$MANIFEST" ]]; then
   exit 1
 fi
 
-# Read manifest and copy files with clean names
+# Read manifest and copy files with clean, timestamped names.
+# Each screenshot gets a monotonic timestamp prefix (T+seconds from first
+# attachment) so reviewers can see *when* each screenshot was taken during
+# the test run and spot long gaps between steps.
 python3 -c "
-import json, re, sys
+import json, re, sys, os
 
 with open('$MANIFEST') as f:
     data = json.load(f)
 
+# Collect all attachments with their timestamps
+entries = []
 for test in data:
     for att in test['attachments']:
         src = att['exportedFileName']
         suggested = att['suggestedHumanReadableName']
-        # Strip '_N_UUID' suffix: 'name_0_XXXXXXXX-...-XXXXXXXXXXXX.ext' -> 'name.ext'
+        # Strip '_N_UUID' suffix
         clean = re.sub(r'_\d+_[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}', '', suggested)
-        print(f'{src}\t{clean}')
-" | while IFS=$'\t' read -r src clean; do
+        # Get file modification time as proxy for capture time
+        src_path = os.path.join('$TMPDIR_EXTRACT', src)
+        mtime = os.path.getmtime(src_path) if os.path.exists(src_path) else 0
+        entries.append((mtime, src, clean))
+
+# Sort by capture time
+entries.sort(key=lambda e: e[0])
+
+# Compute T+offset from first screenshot
+t0 = entries[0][0] if entries else 0
+for mtime, src, clean in entries:
+    elapsed = mtime - t0
+    minutes = int(elapsed) // 60
+    seconds = int(elapsed) % 60
+    # Prefix: T00m00s — monotonic elapsed time from test start
+    ts_prefix = f'T{minutes:02d}m{seconds:02d}s'
+    name_part, ext = os.path.splitext(clean)
+    stamped = f'{ts_prefix}_{name_part}{ext}'
+    print(f'{src}\t{stamped}')
+" | while IFS=$'\t' read -r src stamped; do
   if [[ -f "$TMPDIR_EXTRACT/$src" ]]; then
-    cp "$TMPDIR_EXTRACT/$src" "$OUTPUT_DIR/$clean"
-    echo "  $clean"
+    cp "$TMPDIR_EXTRACT/$src" "$OUTPUT_DIR/$stamped"
+    echo "  $stamped"
   fi
 done
 
