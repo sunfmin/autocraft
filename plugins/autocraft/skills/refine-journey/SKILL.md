@@ -36,7 +36,7 @@ Execute each check and record pass/fail:
 
 ### 2a. Build Check
 - Detect the build system (Swift Package Manager, npm, cargo, go build, etc.)
-- Run the build command
+- Run the build command. For xcodebuild, always use `-derivedDataPath build` so the `.app` is in the project root at `build/Build/Products/Debug/{AppName}.app`.
 - Record: success or failure with errors
 
 ### 2b. Test Check + Speed Measurement

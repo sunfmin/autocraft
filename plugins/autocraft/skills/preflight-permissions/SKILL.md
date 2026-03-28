@@ -96,15 +96,21 @@ If the certificate was just created or `CODE_SIGN_IDENTITY` is `"-"`, update the
 
 ## Step 3: Build the App
 
-Build the app target to produce a signed binary:
+Build the app target to produce a signed binary. Always use `-derivedDataPath build` so the `.app` lands in the project root at a predictable path (`build/Build/Products/Debug/{AppName}.app`). This lets the user easily find and run the app to grant permissions.
 
 ```bash
 xcodebuild build \
   -project {Project}.xcodeproj \
   -scheme {AppName} \
   -destination 'platform=macOS' \
+  -derivedDataPath build \
   -quiet \
   2>&1
+```
+
+After a successful build, print the app path so the user knows where it is:
+```bash
+echo "Built app: $(pwd)/build/Build/Products/Debug/{AppName}.app"
 ```
 
 If the build fails, diagnose and fix before continuing. Common issues:
@@ -174,12 +180,17 @@ Open System Settings now:
 Launch the app once so it appears in the TCC permission lists:
 
 ```bash
-# Find and launch the built app briefly so macOS registers it
-APP_PATH=$(xcodebuild -scheme {AppName} -showBuildSettings 2>/dev/null | \
-  grep ' BUILT_PRODUCTS_DIR' | xargs | cut -d= -f2)/{AppName}.app
+# Launch the built app briefly so macOS registers it for TCC permissions
+APP_PATH="$(pwd)/build/Build/Products/Debug/{AppName}.app"
+echo "Launching $APP_PATH so it appears in System Settings permission lists..."
 open "$APP_PATH"
 sleep 3
 osascript -e 'tell application "{AppName}" to quit'
+```
+
+**Tip for the user:** You can also run the app manually any time with:
+```bash
+open build/Build/Products/Debug/{AppName}.app
 ```
 
 ---
@@ -222,11 +233,14 @@ final class PermissionSmokeTests: XCTestCase {
         let window = app.windows.firstMatch
         XCTAssertTrue(window.waitForExistence(timeout: 10))
 
-        // If a permission dialog appears, it means permissions weren't granted
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let alert = springboard.alerts.firstMatch
+        // On macOS, check for alerts/sheets on the app itself (NOT springboard — that's iOS only)
+        let alert = app.alerts.firstMatch
         XCTAssertFalse(alert.waitForExistence(timeout: 3),
-                       "Permission dialog detected — grant the permission in System Settings first")
+                       "Permission alert detected — grant the permission in System Settings first")
+
+        let sheet = app.sheets.firstMatch
+        XCTAssertFalse(sheet.waitForExistence(timeout: 2),
+                       "Permission sheet detected — grant the permission in System Settings first")
     }
 }
 ```
@@ -238,6 +252,7 @@ xcodebuild test \
   -project {Project}.xcodeproj \
   -scheme {UITestScheme} \
   -destination 'platform=macOS' \
+  -derivedDataPath build \
   -only-testing:{UITestTarget}/PermissionSmokeTests \
   -resultBundlePath /tmp/preflight-results.xcresult \
   -quiet \

@@ -122,6 +122,7 @@ time xcodebuild test \
   -project {Project}.xcodeproj \
   -scheme {UITestScheme} \
   -destination 'platform=macOS' \
+  -derivedDataPath build \
   -only-testing:{UITestTarget}/{TestClassName} \
   -resultBundlePath /tmp/test-results.xcresult \
   -quiet 2>&1
