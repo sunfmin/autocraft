@@ -155,7 +155,7 @@ Write `journeys/{NNN}-{name}/testability_review_round{N}_{YYYY-MM-DD}_{HHMMSS}.m
 
 Clean up the journey test code:
 - Readable steps with helpers/page objects where needed
-- Proper waits (no sleeps), stable selectors
+- **NEVER use `sleep()` or fixed-time waits to simulate user reading/thinking time.** Tests MUST complete as fast as possible. Always wait for elements (`waitForExistence(timeout:)`) or conditions instead. The only acceptable fixed wait is when no element/condition can be checked (e.g., animation with no completion signal), and even then keep it under 1 second.
 - Accessibility identifiers on every interactive element
 
 ### Phase C: UI Review — Design-Driven
@@ -202,6 +202,7 @@ If any blockers were solved during this run, confirm that new pitfall files were
 
 - **Load pitfalls first** — Step 0 is not optional. Every session starts by reading the gist.
 - **Add pitfalls for every blocker** — When you find a solution to a non-obvious problem, add it to the gist immediately via `gh gist edit`.
+- **No sleep waits** — NEVER use `sleep()`, `Thread.sleep()`, or fixed-time waits to simulate user reading/thinking time. Use `waitForExistence(timeout:)` or condition-based waits. Tests must finish interactions as fast as possible. Only use a fixed wait (< 1s) when absolutely no element or condition can be checked.
 - **10-minute minimum** — A journey under 10 minutes is not done. Extend it. This is a HARD limit.
 - **Actual durations only** — Never write estimated durations (e.g., `~5m`) to `journey-state.md`. Always measure from the real `xcodebuild test` run.
 - **Work on existing journeys first** — Check `journey-state.md` before creating new ones.
