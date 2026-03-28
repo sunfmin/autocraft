@@ -123,11 +123,13 @@ Read the app's entitlements file and source code to determine which TCC permissi
 | **Microphone** | Entitlement `com.apple.security.device.audio-input` OR uses `AVCaptureDevice` for audio | Privacy & Security > Microphone |
 | **Accessibility** | Uses `AXIsProcessTrusted()` or Accessibility APIs | Privacy & Security > Accessibility |
 | **Automation** | XCUITest needs Accessibility access to control the app | Privacy & Security > Accessibility |
+| **Full Disk Access** | App reads/writes files outside its container (e.g., `~/AppName/`, `/tmp/` test fixtures). Without this, macOS shows _"would like to access data of other apps"_ dialog on **every launch**, blocking unattended UI tests. | Privacy & Security > Full Disk Access |
 
 Also check:
 - `grep -r "SCShareableContent\|SCStreamConfiguration\|CGWindowListCreate" {SourceDir}/` for Screen Recording
 - `grep -r "AVCaptureDevice\|AVAudioSession\|microphone" {SourceDir}/` for Microphone
 - `grep -r "AXIsProcessTrusted\|AXUIElement" {SourceDir}/` for Accessibility
+- Check if the app accesses user-home paths (e.g., `~/AppName/`) or `/tmp/` directories for test fixtures — if so, Full Disk Access is required
 
 Build a checklist of required permissions.
 
@@ -156,8 +158,15 @@ After granting, they will persist across rebuilds (thanks to the code signing ce
    → Add: Xcode (if not already present)
    → Add: {AppName}
 
+4. [ ] Full Disk Access (prevents "access data of other apps" dialog)
+   → System Settings > Privacy & Security > Full Disk Access
+   → Add: {AppName}
+   → Also add: Xcode.app and/or xcodebuild (if running tests from CLI)
+   → Without this, a blocking dialog appears on EVERY app launch during tests
+
 Open System Settings now:
   open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+  open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
 ```
 
 **IMPORTANT:** Open each relevant System Settings pane automatically using `open` commands. Wait for the user to confirm they've granted permissions before proceeding.
@@ -249,6 +258,7 @@ Build:            ✅ Signed with {AppName} Dev
 Screen Recording: ✅ Granted  (or ❌ NOT granted — tests will hang)
 Microphone:       ✅ Granted  (or ⚠️ Not needed / ❌ NOT granted)
 Accessibility:    ✅ Granted  (or ❌ NOT granted — XCUITest will fail)
+Full Disk Access: ✅ Granted  (or ❌ NOT granted — "access data" dialog blocks every launch)
 Smoke Test:       ✅ Passed   (or ❌ Failed — see errors above)
 
 Status: READY FOR AUTOMATED TESTING
