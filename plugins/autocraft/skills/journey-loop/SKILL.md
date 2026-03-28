@@ -228,7 +228,7 @@ Run all tests with: <exact test command>
 
 ## Safety Limits
 
-- **Max iterations:** 10. If not at 95% after 10, stop and report current state with top remaining failures.
+- **No iteration limit.** The loop runs indefinitely until the user stops it or the stop condition is met.
 - **Stall detection:** If the builder produces no changes for 2 consecutive iterations, log the stall and proceed to the refiner — it can diagnose why the builder stalled.
 - **Never modify the spec** — the spec is read-only. Only `AGENTS.md` and the pitfalls gist get improved.
 - **Pitfall gist is append-only** — add new pitfalls, never delete existing ones.
