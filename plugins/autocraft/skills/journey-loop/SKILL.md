@@ -29,6 +29,7 @@ If no argument given, use `spec.md` in the current directory.
 | `journey-refinement-log.md` | Refiner | Orchestrator |
 | `SKILL.md` (repo root) | Refiner | Builder (each restart) |
 | `journey-loop-state.md` | Orchestrator | Orchestrator (resume) |
+| `journey-state.md` | Builder | Builder, Orchestrator |
 
 ---
 
@@ -45,8 +46,8 @@ Create or resume `journey-loop-state.md`:
 **Status:** running
 
 ## Iteration History
-| # | Journey Built | Score | SKILL.md Changes | Decision |
-|---|--------------|-------|-----------------|----------|
+| # | Journey Built | Duration | Score | SKILL.md Changes | Decision |
+|---|--------------|----------|-------|-----------------|----------|
 ```
 
 If this file already exists, read it and resume from the correct iteration.
@@ -55,53 +56,88 @@ If this file already exists, read it and resume from the correct iteration.
 
 ## Loop Protocol
 
-### Step 1: Read Current SKILL.md
+### Step 0: Load Pitfalls (MANDATORY — every iteration)
+
+Before ANYTHING else, fetch and read ALL pitfall files from the shared gist:
+
+```bash
+gh gist view 84a5c108d5742c850704a5088a3f4cbf --files
+```
+
+Then read each file:
+```bash
+gh gist view 84a5c108d5742c850704a5088a3f4cbf -f <filename>
+```
+
+Include the full pitfalls content in the builder agent's prompt so it has them available.
+
+### Step 1: Read Current SKILL.md + Journey State
 
 Before each iteration, read the root `SKILL.md` fresh. The refiner may have changed it.
 
+Also read `journey-state.md` to determine what to work on:
+- If any journey has status `in-progress` or `needs-extension` → builder must work on THAT journey (extend and polish it)
+- If all journeys are `polished` → builder picks the next uncovered path from the spec
+
+**The builder always starts with the first unfinished journey.** It does not skip ahead.
+
 ### Step 2: Launch Builder Agent
 
-Spawn a new Agent with the full content of `SKILL.md` as the task prompt. The builder will:
-- Read the spec
-- Pick the next uncovered journey
-- Write the test
+Spawn a new Agent with:
+1. The full content of `SKILL.md` as instructions
+2. The full content of all pitfall files from the gist
+3. The current `journey-state.md` content
+4. Clear directive: work on the first unfinished journey, or extend it to 10+ minutes
+
+The builder will:
+- Load pitfalls (Step 0 of builder)
+- Check journey state
+- Extend existing journey OR create new one
+- Write/extend the test to fill 10+ minutes
 - Run 3 polish rounds
+- Update `journey-state.md`
 - Commit
 
-Wait for the builder to complete. It's done when a new journey folder exists with `journey.md` and review files.
+Wait for the builder to complete.
 
 ### Step 3: Launch Refiner Agent
 
-After the builder completes, spawn a new Agent with the full content of `.claude/skills/refine-journey/SKILL.md` as the task prompt, substituting the spec path.
+After the builder completes, spawn a new Agent with the full content of the refine-journey SKILL.md as the task prompt, substituting the spec path.
 
 Wait for the refiner to complete. It will:
 - Evaluate the builder's output
 - Write a score to `journey-refinement-log.md`
 - Edit `SKILL.md` with improvements
 
-### Step 4: Read the Score
+### Step 4: Read the Score + Journey State
 
 Read `journey-refinement-log.md`. Extract from the most recent entry:
 - `Score:` — the percentage
 - `Failures Found:` — list of failures
 - `Changes Made to SKILL.md:` — what was changed
 
+Read `journey-state.md` to check:
+- Is the current journey `polished` (duration >= 10m, all tests pass)?
+- If not, the next iteration must continue working on it
+
 ### Step 5: Decide Next Action
 
-**If score >= 95% AND all spec requirements have journeys:** Stop — the product is done.
+**If score >= 95% AND all journeys are `polished` AND all spec requirements covered:** Stop.
 
-**If score improved from last iteration:** Continue to next journey (builder picks the next uncovered path).
+**If current journey is not yet `polished`:** Continue working on the same journey next iteration.
 
-**If score did NOT improve for 2 consecutive iterations:** The builder should still continue to the next journey (each journey is independent), but log a warning. If the same failure pattern appears 3 times, escalate — the fix was insufficient and needs a deeper structural change to SKILL.md.
+**If current journey is `polished`:** Move to the next unfinished journey or next uncovered spec path.
+
+**If score did NOT improve for 2 consecutive iterations:** Log a warning. If the same failure pattern appears 3 times, escalate.
 
 ### Step 6: Update Loop State
 
 Append to `journey-loop-state.md`:
 ```
-| <iteration> | <journey-name> | <score>% | <N changes> | <continue/done> |
+| <iteration> | <journey-name> | <duration> | <score>% | <N changes> | <continue/done> |
 ```
 
-Increment iteration counter. Go to Step 1.
+Increment iteration counter. Go to Step 0.
 
 ---
 
@@ -111,14 +147,16 @@ Stop when **all** of:
 - Overall score >= 95%
 - Build passes
 - All journey tests pass
+- Every journey in `journey-state.md` has status `polished` with duration >= 10 minutes
 - Every requirement in the spec has a journey covering it
 
 When stopped, output:
 ```
 Loop complete after <N> iterations.
 Final score: XX%
-Journeys built: <list>
+Journeys built: <list with durations>
 Spec coverage: X / N requirements covered
+Total test suite duration: Xm
 Run all tests with: <exact test command>
 ```
 
@@ -127,5 +165,6 @@ Run all tests with: <exact test command>
 ## Safety Limits
 
 - **Max iterations:** 10. If not at 95% after 10, stop and report current state with top remaining failures.
-- **Stall detection:** If the builder produces no new journey folder, log the stall and proceed to the refiner — it can diagnose why the builder stalled.
+- **Stall detection:** If the builder produces no changes for 2 consecutive iterations, log the stall and proceed to the refiner — it can diagnose why the builder stalled.
 - **Never modify the spec** — the spec is read-only. Only `SKILL.md` gets improved.
+- **Pitfall gist is append-only** — add new pitfalls, never delete existing ones.

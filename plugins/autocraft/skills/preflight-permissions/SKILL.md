@@ -90,8 +90,7 @@ If the certificate was just created or `CODE_SIGN_IDENTITY` is `"-"`, update the
 - Change `CODE_SIGN_IDENTITY: "-"` to `CODE_SIGN_IDENTITY: "{AppName} Dev"`
 - Run `xcodegen generate` to regenerate the Xcode project
 
-**If no `project.yml` (raw Xcode project):**
-- Use `sed` or manual edit on the `.pbxproj` to set `CODE_SIGN_IDENTITY` to the certificate name
+**NEVER edit `.xcodeproj` manually.** If no `project.yml` exists, create one first with `xcodegen`.
 
 ---
 
