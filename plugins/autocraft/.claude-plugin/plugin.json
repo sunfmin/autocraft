@@ -6,6 +6,7 @@
     "name": "sunfmin"
   },
   "skills": [
+    "./skills/preflight-permissions",
     "./skills/journey-builder",
     "./skills/refine-journey",
     "./skills/journey-loop"
