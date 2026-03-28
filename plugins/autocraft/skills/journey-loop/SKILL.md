@@ -77,9 +77,11 @@ Before each iteration, read the root `SKILL.md` fresh. The refiner may have chan
 
 Also read `journey-state.md` to determine what to work on:
 - If any journey has status `in-progress` or `needs-extension` → builder must work on THAT journey (extend and polish it)
-- If all journeys are `polished` → builder picks the next uncovered path from the spec
+- If a journey claims `polished` but its `Test Duration` is blank, `unknown`, or contains `~` (estimated) → treat it as `needs-extension`. **The duration column MUST contain the actual measured wall-clock time from a passing `xcodebuild test` run** (e.g., `12m30s`). Estimated values like `~5m` are NOT valid.
+- If a journey has `polished` status but duration < 10 minutes → treat it as `needs-extension`. **10 minutes is a hard limit — no exceptions.**
+- Only when ALL journeys have `polished` status with verified real durations >= 10 minutes → builder picks the next uncovered path from the spec
 
-**The builder always starts with the first unfinished journey.** It does not skip ahead.
+**The builder always starts with the first unfinished journey.** It does not skip ahead. A journey is "unfinished" if ANY of: status is not `polished`, duration is missing/estimated/contains `~`, or duration < 10 minutes.
 
 ### Step 2: Launch Builder Agent
 
@@ -117,8 +119,9 @@ Read `journey-refinement-log.md`. Extract from the most recent entry:
 - `Changes Made to SKILL.md:` — what was changed
 
 Read `journey-state.md` to check:
-- Is the current journey `polished` (duration >= 10m, all tests pass)?
-- If not, the next iteration must continue working on it
+- Is the current journey `polished` with a real measured duration >= 10m AND all tests pass?
+- Is the duration an actual measured value (not estimated with `~`)?
+- If either check fails, the next iteration must continue working on it
 
 ### Step 5: Decide Next Action
 

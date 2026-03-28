@@ -68,9 +68,9 @@ Read `journey-state.md` in the project root (create if missing). This file track
 ```
 
 **Decision logic:**
-1. Find the first journey with status `in-progress` or `needs-extension` — work on that one
-2. If all existing journeys are `polished`, pick the next uncovered path from the spec
-3. A journey is `polished` ONLY when: all tests pass, all 3 polish rounds done, AND test duration >= 10 minutes
+1. Find the first journey where status is `in-progress`, `needs-extension`, OR duration is blank/estimated (`~`)/under 10 minutes — work on that one
+2. Only if ALL existing journeys are `polished` with real measured durations >= 10 minutes, pick the next uncovered path from the spec
+3. A journey is `polished` ONLY when: all tests pass, all 3 polish rounds done, AND test duration >= 10 minutes (actual measured wall-clock time, not estimated)
 
 ## Step 2: Read spec + existing journeys
 
@@ -185,7 +185,8 @@ Measure the final test duration. If still under 10 minutes after all polish roun
 Update `journey-state.md`:
 - Set status to `polished` if test duration >= 10 minutes AND all tests pass
 - Set status to `needs-extension` if test duration < 10 minutes
-- Record the test duration and current date
+- **Record the ACTUAL measured wall-clock time** from the `xcodebuild test` run (e.g., `12m30s`). NEVER write estimated durations like `~5m`. If you didn't measure it, write `unmeasured` and treat status as `needs-extension`.
+- Record the current date
 
 ## Step 9: Commit
 
@@ -201,8 +202,14 @@ If any blockers were solved during this run, confirm that new pitfall files were
 
 - **Load pitfalls first** — Step 0 is not optional. Every session starts by reading the gist.
 - **Add pitfalls for every blocker** — When you find a solution to a non-obvious problem, add it to the gist immediately via `gh gist edit`.
-- **10-minute minimum** — A journey under 10 minutes is not done. Extend it.
+- **10-minute minimum** — A journey under 10 minutes is not done. Extend it. This is a HARD limit.
+- **Actual durations only** — Never write estimated durations (e.g., `~5m`) to `journey-state.md`. Always measure from the real `xcodebuild test` run.
 - **Work on existing journeys first** — Check `journey-state.md` before creating new ones.
+- **NEVER mock test data in /tmp or anywhere** — Do NOT create fake fixture data programmatically in test `setUp()` methods (e.g., writing JSON files to `/tmp/` or `NSTemporaryDirectory()`). Instead:
+  1. **Use earlier journeys to generate data.** Journey tests run in sequence. Earlier journeys (e.g., first-launch-setup, recording) should create real data through UI operations that later journeys can use.
+  2. **Generate data like a real user would.** If a journey needs a recording to exist, a prior journey must have created it through the app's actual recording flow via the UI.
+  3. **If UI-generated data is truly impossible** (e.g., the feature isn't built yet), you MAY add data programmatically BUT you MUST: (a) document it clearly in `journey.md` under a `## Programmatic Test Data` section explaining what was added and why UI generation wasn't possible, and (b) add a TODO to replace it with UI-generated data once the feature is available.
+  4. **Journey ordering matters.** Design journey sequences so that data-producing journeys come before data-consuming journeys. The numbering (001, 002, 003...) defines execution order.
 - One journey at a time
 - Real user behavior only — no internal APIs
 - Every step gets a screenshot (app window only)
