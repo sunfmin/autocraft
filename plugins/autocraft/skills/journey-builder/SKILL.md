@@ -64,14 +64,9 @@ Check if the UI test target has the shared helper files. If missing, copy them f
 TEMPLATES="{skill-base-dir}/../templates"
 UI_TEST_DIR=$(find . -name "*UITests" -type d -maxdepth 1 | head -1)
 
-# Copy JourneyTestCase base class (snap helper + window launch fix)
+# Copy JourneyTestCase base class (snap helper with dedup + window launch fix)
 if [ -n "$UI_TEST_DIR" ] && [ ! -f "$UI_TEST_DIR/JourneyTestCase.swift" ]; then
   cp "$TEMPLATES/JourneyTestCase.swift" "$UI_TEST_DIR/"
-fi
-
-# Copy XCUIElementSnapshot extension (batch element checking)
-if [ -n "$UI_TEST_DIR" ] && [ ! -f "$UI_TEST_DIR/XCUIElementSnapshot+Helpers.swift" ]; then
-  cp "$TEMPLATES/XCUIElementSnapshot+Helpers.swift" "$UI_TEST_DIR/"
 fi
 ```
 
@@ -160,46 +155,57 @@ final class MyJourneyTests: JourneyTestCase {
 ```
 
 `JourneyTestCase` provides:
-- `snap(_:slowOK:)` — screenshot + timing + disk write
-- `takeSnapshot()` — batch element checking (see below)
+- `snap(_:slowOK:)` — screenshot + timing + disk write + **dedup** (skips if identical to previous)
 - `setUpWithError()` — clears timing, creates dirs, launches app, opens window if needed
 - `tearDownWithError()` — terminates app
 
-### Batch element checking with snapshots (IMPORTANT)
+### Use .exists instead of waitForExistence (CRITICAL for speed)
 
-**Problem:** Each `.exists` or `waitForExistence()` call fetches the entire accessibility tree over IPC (~50-100ms each). Ten sequential checks = 10 tree fetches.
+`waitForExistence(timeout: N)` polls the accessibility tree every ~1 second. When an element doesn't exist, the full timeout is burned. This is the #1 cause of slow journey tests.
 
-**Solution:** After a view transition, take ONE snapshot and check everything against it:
+**Rule: one `waitForExistence` per view transition, `.exists` for everything else.**
 
 ```swift
-// Wait for the view to load (1 tree fetch)
-XCTAssertTrue(consentIcon.waitForExistence(timeout: 10))
-snap("001-consent-initial", slowOK: "app launch")
+// SLOW — 238s test (original)
+XCTAssertTrue(title.waitForExistence(timeout: 5))     // 5s timeout, polls
+XCTAssertTrue(button.waitForExistence(timeout: 5))     // 5s timeout, polls
+if optional.waitForExistence(timeout: 3) { ... }       // 3s burned if missing
 
-// Take ONE snapshot — all subsequent checks are instant (pure CPU, no IPC)
-let s = takeSnapshot()
-if s.hasDescendant(id: "acceptConsentButton") { snap("002-accept-button") }
-if s.hasDescendant(labelContaining: "records your screen") { snap("003-recording-point") }
-if s.hasDescendant(labelContaining: "stay on your device") { snap("004-privacy-point") }
-if s.hasDescendant(id: "setupStep0") { snap("005-progress-bar") }
-
-// Use live element references for clicks (1 tree fetch per click, unavoidable)
-app.buttons["acceptConsentButton"].click()
-snap("006-accepted")
+// FAST — 61s test (3.9x faster)
+XCTAssertTrue(title.waitForExistence(timeout: 10))     // wait ONCE for view to load
+XCTAssertTrue(button.exists)                           // instant (~50ms)
+if optional.exists { ... }                             // instant, no timeout burn
 ```
 
-**Performance comparison:**
-| Approach | Tree fetches for 10 checks | Time |
-|----------|---------------------------|------|
-| `waitForExistence(timeout: 2)` × 10 | up to 30 | ~20s worst case |
-| `.exists` × 10 | 10 | ~0.5-1s |
-| `takeSnapshot()` once + check × 10 | 1 | ~0.1s |
+**Pattern per phase:**
+1. After a view transition (navigation, button click that changes screens), use `waitForExistence()` on ONE element to confirm the new view loaded
+2. For all other elements in that same view, use `.exists` (synchronous, ~50ms, no polling)
+3. Use live element references for clicks — they need current coordinates
+4. Repeat after the next navigation
 
-**Rules:**
-- Use `waitForExistence()` ONLY for the first element after a view transition (navigation, button click that changes views)
-- Use `takeSnapshot()` + `hasDescendant()` for all other existence checks within the same view
-- Use live element references (`app.buttons["id"]`) for clicks — they need current coordinates
-- Take a new snapshot after any action that changes the view (click, navigation)
+**Example:**
+```swift
+// Phase 1 — Consent Screen
+let consentIcon = app.images["consentIcon"]
+XCTAssertTrue(consentIcon.waitForExistence(timeout: 10))  // wait for view
+snap("001-consent-initial")
+
+// Everything else is already rendered — .exists is instant
+XCTAssertTrue(app.staticTexts["Recording Consent"].exists)
+snap("002-consent-title")
+XCTAssertTrue(app.buttons["acceptConsentButton"].exists)
+snap("003-accept-button")
+
+// Click transitions to next view
+app.buttons["acceptConsentButton"].click()
+snap("004-accepted")
+
+// Phase 2 — new view, wait once again
+let downloadButton = app.buttons["downloadButton"]
+XCTAssertTrue(downloadButton.waitForExistence(timeout: 8))  // wait for new view
+snap("005-model-selection")
+if app.staticTexts["Choose Whisper Model"].exists { snap("006-title") }  // instant
+```
 
 **Web (Playwright) — equivalent pattern:**
 ```typescript
@@ -334,7 +340,8 @@ If any blockers were solved during this run, confirm that new pitfall files were
 
 - **Load pitfalls first** — Step 0 is not optional. Every session starts by reading the gist.
 - **Add pitfalls for every blocker** — When you find a solution to a non-obvious problem, add it to the gist immediately via `gh gist edit`.
-- **No sleep waits** — NEVER use `sleep()`, `Thread.sleep()`, or fixed-time waits to simulate user reading/thinking time. Use `waitForExistence(timeout:)` or condition-based waits. Tests must finish interactions as fast as possible. Only use a fixed wait (< 1s) when absolutely no element or condition can be checked.
+- **No sleep waits** — NEVER use `sleep()`, `Thread.sleep()`, or fixed-time waits. Tests must complete as fast as possible.
+- **Use .exists, not waitForExistence** — Use `waitForExistence()` ONLY once per view transition. For all other element checks in the same loaded view, use `.exists` (synchronous, ~50ms). Never use `waitForExistence` on elements that are already rendered. This is the difference between a 238s test and a 61s test.
 - **3-second gap enforcement** — Every gap between consecutive screenshots must be <= 3s. The `snap()` helper writes `screenshot-timing.jsonl` in real-time. The journey-loop watcher monitors this file and kills the test on violations. Mark unavoidable long gaps with `// SLOW-OK: reason` before the snap call.
 - **10-minute minimum** — A journey under 10 minutes is not done. Extend it by going deeper into the feature chain (new outcomes, new verifications), NEVER by repeating actions already tested. This is a HARD limit.
 - **No repetitive padding** — NEVER repeat an interaction already performed to pad time. No cycling through the same cards multiple times. No navigating between the same tabs repeatedly. No typing multiple search queries that all produce the same result. Each interaction must test something the previous interactions didn't. If you catch yourself writing "round 2" or "again" in a comment, you are padding.
