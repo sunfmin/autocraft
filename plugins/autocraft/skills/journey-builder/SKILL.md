@@ -7,6 +7,8 @@ description: Build and test the longest uncovered user journey from spec.md. Rea
 
 Build one user journey at a time. Each journey is a realistic path through the app tested like a real user — with screenshots at every step. Each journey MUST take at least 10 minutes to run end-to-end.
 
+**Depth-chain principle:** A journey is a chain of actions where each step produces an outcome that the next step consumes or verifies. Example: setup → create a recording → verify it appears in library → play it back → check transcript syncs → search for it → delete it → verify it's gone. Every step must exercise something NEW. If you've already clicked a button and verified it works, do not click it again.
+
 ## Prerequisites
 
 - `spec.md` in project root
@@ -81,65 +83,145 @@ Read `spec.md`. Read every `journeys/*/journey.md` to know what's covered.
 **If extending an existing journey** (status is `in-progress` or `needs-extension`):
 - Read the existing `journey.md` and test file
 - Run the test and measure duration
-- If under 10 minutes, add more steps: deeper interactions, edge cases, alternative paths, undo/redo flows, settings changes, navigation round-trips
+- If under 10 minutes, extend the workflow chain deeper — add steps that produce NEW outcomes: create data, modify it, verify persistence, test edge cases, trigger error states and recover
 - Update `journey.md` with the new steps
 
 **If creating a new journey:**
 - Find the longest uncovered user path
 - Create numbered folder: `journeys/{NNN}-{name}/`
-- Write `journey.md` describing MANY steps — aim for 15-25 steps minimum
-- Include: happy path, edge cases, error recovery, navigation between views, settings changes, data persistence checks
+- Write `journey.md` as a depth-chain: each step produces output the next step uses
+- Include: complete workflow (create → use → modify → verify → clean up), edge cases, error recovery, data persistence checks
 
-A 10-minute journey should have enough steps to thoroughly exercise the feature. Think like a QA tester doing a full regression pass, not a developer doing a smoke test.
+**Anti-repetition rule (HARD):** Before finalizing, scan the test for repeated interactions. If the same element is clicked more than twice, or the same navigation path is traversed more than once, it is padding — remove it. The 10-minute target must be hit through feature depth (more features tested end-to-end), NEVER through repeating interactions already performed. Clicking through 5 model cards once is testing; clicking through them 3 times is waste.
 
 ## Step 4: Write the test
 
 One test file. Act like a real user. Screenshot after every meaningful step via XCTAttachment (macOS) or Playwright locator screenshot (web). Name: `{journey}-{NNN}-{step}.png`. The extract script adds elapsed-time prefixes (`T00m05s_`) automatically — you do NOT add timestamps in code.
 
-**macOS:**
+### Snap helper with built-in timing measurement (MANDATORY)
+
+Every journey test MUST use a `snap()` helper that measures the gap since the last screenshot and writes it to a timing file in real-time. This is the enforcer — no gap > 3s goes unnoticed.
+
+**macOS — required snap helper pattern:**
 ```swift
-let screenshot = app.windows.firstMatch.screenshot()
-let attachment = XCTAttachment(screenshot: screenshot)
-attachment.name = "journey-name-001-step-name"
-attachment.lifetime = .keepAlways
-add(attachment)
+// Properties on the test class:
+var screenshotIndex = 0
+var lastSnapTime: CFAbsoluteTime = 0
+
+// journeyDir must point to the journey folder, e.g.:
+// "\(Self.projectRoot)/journeys/001-first-launch-setup"
+
+/// Takes a screenshot, writes it to disk, and logs timing.
+/// Pass `slowOK: "reason"` for steps with unavoidable delays > 3s.
+private func snap(_ name: String, slowOK: String? = nil) {
+    screenshotIndex += 1
+    let now = CFAbsoluteTimeGetCurrent()
+    let gap = lastSnapTime == 0 ? 0 : now - lastSnapTime
+    lastSnapTime = now
+
+    // Determine timing status
+    let status: String
+    if gap <= 3 {
+        status = "ok"
+    } else if let reason = slowOK {
+        status = "SLOW-OK: \(reason)"
+    } else {
+        status = "SLOW"
+    }
+
+    // 1. Capture screenshot
+    let screenshot = app.windows.firstMatch.screenshot()
+
+    // 2. Attach to xcresult (for CI / Xcode results)
+    let attachment = XCTAttachment(screenshot: screenshot)
+    attachment.name = "journey-name-\(name)"
+    attachment.lifetime = .keepAlways
+    add(attachment)
+
+    // 3. Write screenshot PNG to disk immediately
+    let screenshotsDir = "\(journeyDir)/screenshots"
+    try? FileManager.default.createDirectory(
+        atPath: screenshotsDir,
+        withIntermediateDirectories: true
+    )
+    let pngPath = "\(screenshotsDir)/\(name).png"
+    try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: pngPath))
+
+    // 4. Append timing measurement to JSONL (real-time, one line per snap)
+    let timingPath = "\(journeyDir)/screenshot-timing.jsonl"
+    let escapedStatus = status.replacingOccurrences(of: "\"", with: "\\\"")
+    let line = "{\"index\":\(screenshotIndex),\"name\":\"\(name)\",\"gap_seconds\":\(String(format: "%.1f", gap)),\"status\":\"\(escapedStatus)\"}\n"
+    if let data = line.data(using: .utf8) {
+        if FileManager.default.fileExists(atPath: timingPath) {
+            if let handle = FileHandle(forWritingAtPath: timingPath) {
+                handle.seekToEndOfFile()
+                handle.write(data)
+                handle.closeFile()
+            }
+        } else {
+            FileManager.default.createFile(atPath: timingPath, contents: data)
+        }
+    }
+}
 ```
 
-**Web:**
+The `snap()` helper does three things on every call:
+1. **Writes the .png file** to `journeys/{NNN}-{name}/screenshots/` immediately
+2. **Attaches to xcresult** for Xcode/CI visibility
+3. **Appends timing data** to `screenshot-timing.jsonl` — the gap since the last snap, flagged SLOW if > 3s
+
+**In `setUpWithError()`**, clear the timing file so each run starts fresh:
+```swift
+// Clear previous timing data
+let timingPath = "\(journeyDir)/screenshot-timing.jsonl"
+try? FileManager.default.removeItem(atPath: timingPath)
+```
+
+The key: `screenshot-timing.jsonl` is written DURING the test, one line per screenshot. After the test finishes, the builder reads this file to find violations.
+
+**Web (Playwright) — equivalent pattern:**
 ```typescript
-await page.locator('#app').screenshot({
-  path: 'journeys/001-journey-name/screenshots/journey-name-001-step-name.png'
-});
+let lastSnapTime = 0;
+let snapIndex = 0;
+
+async function snap(page: Page, name: string, journeyDir: string) {
+  snapIndex++;
+  const now = Date.now();
+  const gap = lastSnapTime ? (now - lastSnapTime) / 1000 : 0;
+  lastSnapTime = now;
+  const status = gap > 3 ? 'SLOW' : 'ok';
+
+  // 1. Write screenshot to disk
+  const dir = `${journeyDir}/screenshots`;
+  fs.mkdirSync(dir, { recursive: true });
+  await page.locator('#app').screenshot({ path: `${dir}/${name}.png` });
+
+  // 2. Append timing to JSONL
+  const line = JSON.stringify({ index: snapIndex, name, gap_seconds: +gap.toFixed(1), status });
+  fs.appendFileSync(`${journeyDir}/screenshot-timing.jsonl`, line + '\n');
+}
 ```
 
-### Wait-time budget — make tests pleasant to watch
+### 3-second gap rule
 
-A human watching the test should see constant, snappy activity — never a frozen screen. Follow this timeout budget:
+Every gap between consecutive screenshots MUST be <= 3 seconds. The `snap()` helper writes each gap to `screenshot-timing.jsonl` in real-time. The journey-loop's **timing watcher** monitors this file and will **kill the test** if a SLOW entry is detected.
 
-| Situation | Max timeout | Notes |
-|-----------|------------|-------|
-| Element already on screen (tap result, navigation) | **2s** | UI should react instantly |
-| New screen transition (wizard step, tab switch) | **3s** | Animations + layout |
-| Async operation (simulated download, data load) | **5s** | Must show progress indicator |
-| Heavy async (real download, first build) | **30–60s** | Add progress screenshots inside the wait loop |
+If the watcher kills your test, you will be restarted after the orchestrator investigates and fixes the slow gap. To avoid being killed:
+- Keep all `waitForExistence` timeouts <= 3s unless the operation genuinely requires longer
+- For unavoidable long waits (async downloads, app launch), pass `slowOK:` to the snap call: `snap("042-download-done", slowOK: "simulated download requires async completion")`. The watcher ignores `SLOW-OK` entries.
+- Add intermediate screenshots inside long wait loops so no single gap exceeds 3s:
+  ```swift
+  // Break a 30s download wait into 3s chunks with progress screenshots
+  for i in 0..<10 {
+      if doneButton.waitForExistence(timeout: 3) { break }
+      snap("042-download-progress-\(i)")
+  }
+  snap("043-download-done")
+  ```
 
-**Rules:**
-1. **Default timeout is 3s.** Only raise it when you have a concrete reason.
-2. **Every timeout > 3s MUST have a code comment** explaining WHY it needs that long (e.g., `// 30s: simulated model download runs on background thread`).
-3. **Never use a bare `waitForExistence(timeout: 10)` without a comment.** If you cannot explain why 10s is needed, lower it.
-4. **If a wait > 5s is for an async operation**, capture progress screenshots inside the wait loop so the viewer sees activity, not a frozen screen:
-   ```swift
-   // 30s: simulated download — capture progress every 5s
-   for i in 0..<6 {
-       if doneButton.waitForExistence(timeout: 5) { break }
-       snap("042-download-progress-\(i)")
-   }
-   ```
-5. **After writing the test, review every `timeout:` call.** For each one > 3s, confirm the reason is still valid. Remove or lower stale high timeouts from copy-paste.
+## Step 5: Run the test and enforce timing
 
-## Step 5: Run the test
-
-Run only this test. Fix failures. Measure wall-clock time. Extract screenshots into the `screenshots/` subfolder:
+Run only this test. Fix failures. Measure wall-clock time. Extract screenshots:
 
 ```bash
 rm -rf /tmp/test-results.xcresult
@@ -157,7 +239,9 @@ time xcodebuild test \
 {skill-base-dir}/scripts/extract-screenshots.sh /tmp/test-results.xcresult journeys/{NNN}-{name}/screenshots
 ```
 
-**Duration check:** If the test completes in under 10 minutes, go back to Step 3 and add more steps. Do NOT proceed to polish until the journey is substantial enough.
+**Duration check:** If the test completes in under 10 minutes, go back to Step 3 and add more depth (new features, not repetition). Do NOT proceed to polish until the journey is substantial enough.
+
+**Timing:** The journey-loop's watcher enforces the 3-second gap rule by monitoring `screenshot-timing.jsonl` in real-time. If your test is killed by the watcher, you'll be restarted after the gap is fixed. See the 3-second gap rule in Step 4.
 
 ## Step 6: Polish loop (3 rounds)
 
@@ -229,8 +313,9 @@ If any blockers were solved during this run, confirm that new pitfall files were
 - **Load pitfalls first** — Step 0 is not optional. Every session starts by reading the gist.
 - **Add pitfalls for every blocker** — When you find a solution to a non-obvious problem, add it to the gist immediately via `gh gist edit`.
 - **No sleep waits** — NEVER use `sleep()`, `Thread.sleep()`, or fixed-time waits to simulate user reading/thinking time. Use `waitForExistence(timeout:)` or condition-based waits. Tests must finish interactions as fast as possible. Only use a fixed wait (< 1s) when absolutely no element or condition can be checked.
-- **Timeout budget** — Default timeout is 3s. Any `waitForExistence(timeout:)` > 3s MUST have a comment explaining why. Any wait > 5s must capture progress screenshots in a loop so viewers see activity. See Step 4 for the full budget table.
-- **10-minute minimum** — A journey under 10 minutes is not done. Extend it. This is a HARD limit.
+- **3-second gap enforcement** — Every gap between consecutive screenshots must be <= 3s. The `snap()` helper writes `screenshot-timing.jsonl` in real-time. The journey-loop watcher monitors this file and kills the test on violations. Mark unavoidable long gaps with `// SLOW-OK: reason` before the snap call.
+- **10-minute minimum** — A journey under 10 minutes is not done. Extend it by going deeper into the feature chain (new outcomes, new verifications), NEVER by repeating actions already tested. This is a HARD limit.
+- **No repetitive padding** — NEVER repeat an interaction already performed to pad time. No cycling through the same cards multiple times. No navigating between the same tabs repeatedly. No typing multiple search queries that all produce the same result. Each interaction must test something the previous interactions didn't. If you catch yourself writing "round 2" or "again" in a comment, you are padding.
 - **Actual durations only** — Never write estimated durations (e.g., `~5m`) to `journey-state.md`. Always measure from the real `xcodebuild test` run.
 - **Work on existing journeys first** — Check `journey-state.md` before creating new ones.
 - **NEVER mock test data in /tmp or anywhere** — Do NOT create fake fixture data programmatically in test `setUp()` methods (e.g., writing JSON files to `/tmp/` or `NSTemporaryDirectory()`). Instead:
