@@ -105,11 +105,15 @@ Read `journey-state.md` in the project root (create if missing). This file track
 **Decision logic:**
 1. Find the first journey where status is `in-progress` or `needs-extension` — work on that one
 2. Only if ALL existing journeys are `polished` with all acceptance criteria covered, pick the next uncovered path from the spec
-3. A journey is `polished` ONLY when: all tests pass, all 3 polish rounds done, AND all mapped acceptance criteria are covered with real implementations (no placeholders, no simulations)
+3. A journey is `polished` ONLY when: all tests pass, all 3 polish rounds done, AND every acceptance criterion from every requirement listed in the journey's `## Spec Coverage` section is covered — meaning a real implementation exists (no placeholders, no simulations), a test step exercises it, and a screenshot captures the outcome. The criterion count in the journey's Spec Coverage must match the count in `spec.md`. A journey is NOT polished if any criterion from any mapped requirement lacks a screenshot.
 
 ## Step 2: Read spec + existing journeys
 
-Read `spec.md`. Read every `journeys/*/journey.md` to know what's covered.
+Read `spec.md`. For every requirement, list ALL its acceptance criteria — do not skim. Read every `journeys/*/journey.md`. For each journey, note which acceptance criteria it has mapped AND whether each criterion has screenshot evidence (a screenshot whose step matches the criterion). You now have two sets:
+- **Fully implemented criteria**: appearing in a journey's `## Spec Coverage` section AND having a corresponding screenshot
+- **Uncovered criteria**: not in any journey's Spec Coverage, OR in a journey but lacking screenshot evidence
+
+This two-set distinction is your working ground truth for the rest of this run.
 
 ## Step 3: Pick or extend a journey
 
@@ -123,13 +127,27 @@ Read `spec.md`. Read every `journeys/*/journey.md` to know what's covered.
 - Find the longest uncovered user path
 - Create numbered folder: `journeys/{NNN}-{name}/`
 - Write `journey.md` as a depth-chain: each step produces output the next step uses
-- **Spec mapping (MANDATORY):** At the top of `journey.md`, list which spec requirements this journey covers and which acceptance criteria it will verify. Example:
+- **Spec mapping (MANDATORY — no cherry-picking):** At the top of `journey.md`, list which spec requirements this journey covers. For each mapped requirement, you MUST list ALL of its acceptance criteria — not a subset. Count the criteria in `spec.md` for that requirement and list every one by number.
+
+  CORRECT (all criteria listed for each requirement):
   ```markdown
   ## Spec Coverage
-  - P0-0: First Launch Setup (criteria 1-6)
-  - P0-2: Window Picker (criteria 1, 2, 5)
-  - P0-3: Screen + Audio Recording (criteria 1, 4, 6)
+  - P0-0: First Launch Setup — criteria 1, 2, 3, 4, 5, 6 (all 6)
+  - P0-2: Window Picker — criteria 1, 2, 3, 4, 5 (all 5)
+  - P0-3: Screen + Audio Recording — criteria 1, 2, 3, 4, 5, 6, 7 (all 7)
   ```
+
+  WRONG — DO NOT DO THIS (omits criteria):
+  ```markdown
+  - P0-2: Window Picker (criteria 1, 2, 5)   ← FORBIDDEN: criteria 3 and 4 silently dropped
+  ```
+
+  If a criterion requires data only available from a prior journey, defer it explicitly:
+  ```markdown
+  - P0-2: Window Picker — criteria 1, 2, 3 (this journey); criteria 4, 5 → journey 005 (requires recording created in journey 003)
+  ```
+  Each deferred criterion MUST appear in exactly one future journey's Spec Coverage. Every criterion from every mapped requirement must be owned by exactly one journey.
+
   Every criterion listed MUST be implemented and tested by the end of the journey.
 - Include: complete workflow (create → use → modify → verify → clean up), edge cases, error recovery, data persistence checks
 
@@ -344,8 +362,8 @@ Run the acceptance criteria audit: for each criterion mapped to this journey in 
 ## Step 8: Update journey state
 
 Update `journey-state.md`:
-- Set status to `polished` if all tests pass AND all mapped acceptance criteria are covered with real implementations
-- Set status to `needs-extension` if any mapped acceptance criterion is missing implementation, test step, or screenshot
+- Set status to `polished` ONLY if: (1) all tests pass, (2) all 3 polish rounds are done, AND (3) for every requirement in the journey's `## Spec Coverage` section, EVERY one of that requirement's acceptance criteria (as they appear in `spec.md`) has: a real implementation (grep confirms no placeholder/simulated/fake), a test step that exercises it, and a screenshot that captures the outcome. Count the criteria in `spec.md` for each mapped requirement — the count must match what is listed in the journey.
+- Set status to `needs-extension` if ANY criterion from ANY mapped requirement is missing an implementation, test step, or screenshot — including criteria listed in `spec.md` but absent from the journey's `## Spec Coverage` section.
 - **Record the ACTUAL measured wall-clock time** from the `xcodebuild test` run (for reference, not as a gate)
 - Record the current date
 

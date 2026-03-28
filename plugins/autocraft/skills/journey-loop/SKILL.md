@@ -79,6 +79,23 @@ Before each iteration, read the root `AGENTS.md` fresh (create if missing). The 
 
 Also read `journey-state.md` to determine what to work on:
 
+**1a. Build the Acceptance-Criteria Master List (MANDATORY — every iteration).**
+Read `spec.md` in full. For every requirement, extract EVERY acceptance criterion. Write the complete list into `journey-loop-state.md` under a `## Acceptance Criteria Master List` section using this format exactly:
+
+```
+## Acceptance Criteria Master List
+Total requirements: N
+Total acceptance criteria: M
+
+| ID | Requirement | Criterion # | Criterion Text |
+|----|-------------|-------------|----------------|
+| P0-0 | First Launch Setup | 1 | User sees consent dialog on first launch |
+| P0-0 | First Launch Setup | 2 | User can accept consent |
+...
+```
+
+This table is the ground truth for coverage. Every row MUST be accounted for before the loop stops. Do NOT omit any criterion from any requirement.
+
 **Priority order for picking the next journey:**
 1. Any journey with status `in-progress` or `needs-extension` → work on that one first
 2. If no in-progress journeys, pick the next uncovered spec requirement and create a new journey
@@ -180,17 +197,30 @@ Read `journey-refinement-log.md`. Extract from the most recent entry:
 - `Changes Made to AGENTS.md:` — what was changed
 
 Read `journey-state.md` to check:
-- Is the current journey `polished` with all tests passing AND all mapped acceptance criteria covered?
+- Is the current journey `polished`? Verify by re-reading the journey's `## Spec Coverage` in `journey.md`, counting criteria per requirement in `spec.md`, and confirming each has a screenshot. The status field alone is not sufficient.
 - Is the duration an actual measured value (not estimated with `~`)?
 - If either check fails, the next iteration must continue working on it
 
 ### Step 5: Decide Next Action
 
-**If score >= 95% AND all journeys are `polished` AND all spec requirements covered:** Stop.
+**5a. Pre-stop audit (MANDATORY when score >= 90% or all journeys show `polished`).**
+
+1. Read the Acceptance Criteria Master List from `journey-loop-state.md`. M total rows.
+2. For each criterion row: (a) confirm a journey maps it by number in its `## Spec Coverage`, (b) confirm the journey's test file contains a step exercising it (search for keywords from the criterion text), (c) confirm a screenshot file exists in `journeys/{NNN}-{name}/screenshots/` for that step.
+3. Build a final audit table:
+   ```
+   ## Pre-Stop Criterion Audit
+   | Req ID | Crit # | Journey | Mapped? | Test Step? | Screenshot? | VERDICT |
+   ```
+4. Count uncovered = rows with any NO.
+5. If uncovered > 0: do NOT stop. For each uncovered criterion — if it belongs to a journey currently marked `polished`, update that journey to `needs-extension` in `journey-state.md`; if no journey owns it, create a new journey targeting those criteria. Continue the loop.
+6. Only proceed to stop if uncovered == 0 AND score >= 95%.
+
+**Stop if score >= 95% AND pre-stop audit shows 0 uncovered criteria AND all journeys `polished`.**
 
 **If current journey is not yet `polished`:** Continue working on the same journey next iteration.
 
-**If current journey is `polished`:** Move to the next unfinished journey or next uncovered spec path.
+**If current journey is `polished`:** Move to the next `needs-extension` journey, or next uncovered criteria from the audit.
 
 **If score did NOT improve for 2 consecutive iterations:** Log a warning. If the same failure pattern appears 3 times, escalate.
 
@@ -211,15 +241,18 @@ Stop when **all** of:
 - Overall score >= 95%
 - Build passes
 - All journey tests pass
-- Every journey in `journey-state.md` has status `polished` (all acceptance criteria covered)
-- Every requirement in the spec has a journey covering it
+- Every journey in `journey-state.md` has status `polished`
+- Pre-stop criterion audit in Step 5a shows 0 uncovered criteria (every acceptance criterion in `spec.md` has: a journey mapping it by number, a test step exercising it, and a screenshot proving the outcome)
+- Total criteria covered == M (from the Acceptance Criteria Master List)
 
 When stopped, output:
 ```
 Loop complete after <N> iterations.
 Final score: XX%
 Journeys built: <list with durations>
-Spec coverage: X / N requirements covered
+Spec coverage: X / N requirements fully covered (all criteria)
+Criteria coverage: X / M acceptance criteria covered (impl + test + screenshot)
+Uncovered criteria: (should be 0)
 Total test suite duration: Xm
 Run all tests with: <exact test command>
 ```

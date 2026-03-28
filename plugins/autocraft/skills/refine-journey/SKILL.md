@@ -68,15 +68,39 @@ For the most recent journey:
 - Were all 3 polish rounds completed? Check for `testability_review_round{1,2,3}*.md` and `ui_review_round{1,2,3}*.md`
 - Did each round produce NEW timestamped files (not overwritten)?
 
-### 2f. Spec Coverage Check
-For every requirement in the spec:
-- Is there a journey that covers it?
-- Build a coverage table:
+### 2f. Spec Coverage Check (per-criterion)
 
+Read `spec.md` in full. For every requirement and for EVERY one of its acceptance criteria:
+
+**Step 1 — Map each criterion to a journey:**
+Search every `journeys/*/journey.md` Spec Coverage section. A criterion is "mapped" only if it appears by number in a journey's Spec Coverage. A requirement having a journey does NOT mean all its criteria are mapped — check the criterion count in `spec.md` vs. the count listed in the journey.
+
+**Step 2 — Verify implementation evidence:**
+For each mapped criterion: (1) does the test code contain a step exercising this criterion (search the test file for keywords from the criterion text), and (2) does a screenshot file exist in `screenshots/` that corresponds to that step?
+
+**Step 3 — Build the per-criterion coverage table:**
 ```
-| Requirement | Journey Covering It | Test Passes | Screenshots OK |
-|-------------|-------------------|-------------|----------------|
+| Req ID | Requirement | Crit # | Summary | Journey | Mapped? | Test Step? | Screenshot? | Status |
+|--------|-------------|--------|---------|---------|---------|------------|-------------|--------|
+| P0-0   | First Launch | 1 | Consent dialog | 001-... | YES | YES | YES | COVERED |
+| P0-2   | Window Picker | 3 | ... | none | NO | NO | NO | UNCOVERED |
 ```
+
+**Step 4 — List every criterion with status UNCOVERED or MISSING SCREENSHOT. These MUST be addressed before the loop stops.**
+
+### 2f.5. Journey Status Correction (MANDATORY if gaps found in 2f)
+
+If Phase 2f found any criterion with status UNCOVERED or MISSING SCREENSHOT for a journey whose current status in `journey-state.md` is `polished`, the refiner MUST:
+
+1. Change that journey's status in `journey-state.md` from `polished` to `needs-extension`
+2. Append to `journey-refinement-log.md` under the current run's section:
+   ```
+   ### Status Corrections
+   - Journey `{NNN}-{name}`: downgraded `polished` → `needs-extension`
+     Reason: criteria [P0-2 #3, P0-2 #4] mapped but no screenshot evidence
+   ```
+
+A journey MUST NOT remain `polished` when any of its mapped criteria lack screenshot evidence.
 
 ### 2g. Polish Round Quality
 For each of the 3 polish rounds:
@@ -95,21 +119,23 @@ For each journey test, answer: "Does this test reach the journey's real outcome?
 ## Phase 3: Score the Run
 
 ```
-Spec Coverage:       X / N requirements have a journey     (weight: 20%)
+Criteria Coverage:   X / M acceptance criteria fully covered (impl+test+screenshot) (weight: 35%)
 Tests:               X / N tests passing                   (weight: 15%)
 Build:               passing / failing                     (weight: 10%)
 Screenshot Quality:  X / N screenshots pass design check   (weight: 15%)
 Real Outcomes:       X / N journey tests reach real outcome (weight: 15%)
-Polish Completeness: X / 3 rounds fully completed          (weight: 10%)
-Step Coverage:       X / N journey steps have screenshots   (weight: 10%)
-Test Speed:          Xs total, slowest tests listed         (weight: 5%)
+Polish Completeness: X / 3 rounds fully completed          (weight: 5%)
+Step Coverage:       X / N journey steps have screenshots   (weight: 5%)
+Test Speed:          Xs total (informational only — not scored; flag if > 120s)
 
 Overall Score: XX%
 ```
 
-**Test Speed scoring:**
-- Compare against previous run's time (from `journey-refinement-log.md`). Faster = 100%, same = 50%, slower = 0%.
-- First run: under 30s = 100%, 30-60s = 75%, 60-120s = 50%, over 120s = 25%.
+**Criteria Coverage scoring:**
+- M = total acceptance criteria across ALL requirements in `spec.md`
+- X = criteria that have: (1) a journey mapping them by number, (2) a test step exercising them (keywords from criterion text appear in test code), AND (3) a screenshot proving the outcome
+- Partial (mapped but no screenshot, or mapped + screenshot but test step missing) counts as 0
+- At 35% weight, <90% criterion coverage makes reaching 95% total score mathematically impossible — this is intentional
 
 Write this score to `journey-refinement-log.md` (create if missing), with timestamp and findings summary.
 
