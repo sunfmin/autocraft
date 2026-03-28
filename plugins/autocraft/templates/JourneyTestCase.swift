@@ -1,9 +1,8 @@
 import XCTest
 
 /// Base class for journey UI tests. Provides:
-/// - `snap()` helper with timing measurement and disk-write
-/// - `setUpJourney()` for common setup (clear timing, create dirs, launch app, ensure window)
-/// - Snapshot-based batch element checking via `takeSnapshot()`
+/// - `snap()` helper with dedup, timing measurement, and disk-write
+/// - Setup: clears timing, creates dirs, launches app, ensures window
 ///
 /// Usage:
 /// ```swift
@@ -19,11 +18,6 @@ import XCTest
 ///         let icon = app.images["myIcon"]
 ///         XCTAssertTrue(icon.waitForExistence(timeout: 10))
 ///         snap("001-initial", slowOK: "app launch")
-///
-///         // Batch-check elements without repeated tree fetches
-///         let s = takeSnapshot()
-///         if s.hasDescendant(id: "title") { snap("002-title") }
-///         if s.hasDescendant(id: "button") { snap("003-button") }
 ///     }
 /// }
 /// ```
@@ -32,12 +26,12 @@ class JourneyTestCase: XCTestCase {
     let app = XCUIApplication()
     var screenshotIndex = 0
     var lastSnapTime: CFAbsoluteTime = 0
+    private var lastPngData: Data?
 
     /// Override this in subclasses to set the journey folder name.
     var journeyName: String { fatalError("Subclass must override journeyName") }
 
     /// Computed project root from #file at compile time.
-    /// Override if your test file is not in the standard PercevUITests/ location.
     class var projectRoot: String {
         let filePath = URL(fileURLWithPath: #file)
         return filePath.deletingLastPathComponent().deletingLastPathComponent().path
@@ -52,11 +46,9 @@ class JourneyTestCase: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
 
-        // Clear timing file from previous runs
         let timingPath = "\(journeyDir)/screenshot-timing.jsonl"
         try? FileManager.default.removeItem(atPath: timingPath)
 
-        // Create screenshots directory
         let screenshotsDir = "\(journeyDir)/screenshots"
         try? FileManager.default.createDirectory(
             atPath: screenshotsDir,
@@ -65,7 +57,7 @@ class JourneyTestCase: XCTestCase {
 
         app.launch()
 
-        // Ensure the app window is open — macOS may not auto-show the window
+        // macOS may not auto-show the window
         if app.windows.count == 0 {
             app.typeKey("n", modifierFlags: .command)
         }
@@ -75,30 +67,25 @@ class JourneyTestCase: XCTestCase {
         app.terminate()
     }
 
-    // MARK: - Snapshot (batch element checking)
-
-    /// Take a snapshot of the current window for fast, batch element existence checks.
-    /// Use `snapshot.hasDescendant(id:)` to check elements without additional tree fetches.
-    ///
-    /// ```swift
-    /// let s = takeSnapshot()
-    /// if s.hasDescendant(id: "title") { snap("010-title") }
-    /// if s.hasDescendant(id: "subtitle") { snap("011-subtitle") }
-    /// // ^ Both checks use the same snapshot — 1 tree fetch instead of 2
-    /// ```
-    func takeSnapshot() -> XCUIElementSnapshot {
-        // swiftlint:disable:next force_try
-        try! app.windows.firstMatch.snapshot()
-    }
-
     // MARK: - Snap helper
 
     /// Takes a screenshot, writes it to disk, and logs timing.
+    /// Skips writing if the screenshot is identical to the previous one.
     /// Pass `slowOK: "reason"` for steps with unavoidable delays > 3s.
     func snap(_ name: String, slowOK: String? = nil) {
-        screenshotIndex += 1
         let now = CFAbsoluteTimeGetCurrent()
         let gap = lastSnapTime == 0 ? 0 : now - lastSnapTime
+
+        let screenshot = app.windows.firstMatch.screenshot()
+        let pngData = screenshot.pngRepresentation
+
+        // Skip if identical to previous screenshot
+        if let last = lastPngData, last == pngData {
+            return
+        }
+        lastPngData = pngData
+
+        screenshotIndex += 1
         lastSnapTime = now
 
         let status: String
@@ -109,8 +96,6 @@ class JourneyTestCase: XCTestCase {
         } else {
             status = "SLOW"
         }
-
-        let screenshot = app.windows.firstMatch.screenshot()
 
         let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = "\(journeyName)-\(name)"
@@ -123,7 +108,7 @@ class JourneyTestCase: XCTestCase {
             withIntermediateDirectories: true
         )
         let pngPath = "\(screenshotsDir)/\(name).png"
-        try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: pngPath))
+        try? pngData.write(to: URL(fileURLWithPath: pngPath))
 
         let timingPath = "\(journeyDir)/screenshot-timing.jsonl"
         let escapedStatus = status.replacingOccurrences(of: "\"", with: "\\\"")
