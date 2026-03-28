@@ -236,7 +236,7 @@ Every gap between consecutive screenshots MUST be <= 3 seconds. The `snap()` hel
 
 If the watcher kills your test, you will be restarted after the orchestrator investigates and fixes the slow gap. To avoid being killed:
 - Keep all `waitForExistence` timeouts <= 3s unless the operation genuinely requires longer
-- For unavoidable long waits (async downloads, app launch), pass `slowOK:` to the snap call: `snap("042-download-done", slowOK: "simulated download requires async completion")`. The watcher ignores `SLOW-OK` entries.
+- For unavoidable long waits (async downloads, app launch), pass `slowOK:` to the snap call: `snap("042-download-done", slowOK: "model download requires async completion")`. The watcher ignores `SLOW-OK` entries.
 - Add intermediate screenshots inside long wait loops so no single gap exceeds 3s:
   ```swift
   // Break a 30s download wait into 3s chunks with progress screenshots
@@ -281,7 +281,7 @@ Review app code touched by this journey. Check:
 - ViewModels accept protocol dependencies via initializer injection
 - Use Cases are framework-free (no UIKit/SwiftUI/AppKit imports)
 - Side effects (network, disk, permissions) behind protocols
-- DependencyContainer has a test factory with all-fake deps
+- DependencyContainer uses real implementations; unit test factory uses protocol-based test doubles (NOT used in the running app)
 - No shared mutable singletons
 - State transitions are testable (given/when/then)
 
@@ -347,6 +347,7 @@ If any blockers were solved during this run, confirm that new pitfall files were
 - **No repetitive padding** — NEVER repeat an interaction already performed to pad time. No cycling through the same cards multiple times. No navigating between the same tabs repeatedly. No typing multiple search queries that all produce the same result. Each interaction must test something the previous interactions didn't. If you catch yourself writing "round 2" or "again" in a comment, you are padding.
 - **Actual durations only** — Never write estimated durations (e.g., `~5m`) to `journey-state.md`. Always measure from the real `xcodebuild test` run.
 - **Work on existing journeys first** — Check `journey-state.md` before creating new ones.
+- **NEVER simulate, fake, or stub app features** — Do NOT create `SimulatedXxxRepository`, `FakeXxx`, `MockXxx`, or placeholder implementations that bypass real functionality. Every repository, service, and feature MUST use the real framework APIs (ScreenCaptureKit, whisper.cpp, AVPlayer, AVAssetWriter, etc.). If a feature is specified in `spec.md`, implement it for real — not with `Thread.sleep()` + fake data. Simulated implementations waste time: they pass tests but deliver zero user value, and every journey built on top of them must be rewritten when real implementations arrive. If a real API requires permissions or hardware that blocks testing, document the blocker and use `/attack-blocker` to resolve it — do not work around it with a simulation. The only acceptable "fake" is a test double used exclusively in unit tests (never in the running app).
 - **NEVER mock test data in /tmp or anywhere** — Do NOT create fake fixture data programmatically in test `setUp()` methods (e.g., writing JSON files to `/tmp/` or `NSTemporaryDirectory()`). Instead:
   1. **Use earlier journeys to generate data.** Journey tests run in sequence. Earlier journeys (e.g., first-launch-setup, recording) should create real data through UI operations that later journeys can use.
   2. **Generate data like a real user would.** If a journey needs a recording to exist, a prior journey must have created it through the app's actual recording flow via the UI.
