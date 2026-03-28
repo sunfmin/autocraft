@@ -279,6 +279,23 @@ time xcodebuild test \
 
 **Timing:** The journey-loop's watcher enforces the 3-second gap rule by monitoring `screenshot-timing.jsonl` in real-time. If your test is killed by the watcher, you'll be restarted after the gap is fixed. See the 3-second gap rule in Step 4.
 
+## Step 5.5: Critical Evidence Review (MANDATORY)
+
+A passing test is not proof of correctness. After every test run, verify that the test actually exercised what it claims.
+
+**5.5a. Read all screenshots in order.** Look at every screenshot in `journeys/{NNN}-{name}/screenshots/` sequentially. Narrate the story they tell: "Consent screen → model selection → downloading → permissions → library → ..."
+
+**5.5b. Compare the visual story against journey.md.** For each phase in the journey, there must be screenshot evidence that it happened. If a phase has no screenshots (e.g., no recording screenshots, no playback-with-video screenshots), that phase was silently skipped.
+
+**5.5c. For every missing phase, investigate WHY.** Read the test code for that section. Find which condition caused it to skip:
+- An `if element.exists` guard that evaluated to false? → Read the app's SwiftUI code to find why the element wasn't found. Common causes: wrong element type (View with onTapGesture instead of Button), async content not loaded yet (need waitForExistence on child, not just container), missing accessibility identifier.
+- A `waitForExistence` that timed out? → Read the app code to find why the element never appeared. Is the view not being presented? Is the data not loading?
+- An assertion that passed vacuously? → The test asserts something exists, but the surrounding code never runs because an earlier guard skipped it.
+
+**5.5d. Fix the root cause.** Don't add more `if` guards or workarounds. Fix the app code or test code so the phase actually executes. Then re-run the test and repeat this review.
+
+**Do NOT proceed to Step 6 (Polish) until every phase in the journey has screenshot evidence.**
+
 ## Step 6: Polish loop (3 rounds)
 
 Run this loop 3 times (round 1, 2, 3). Each round does all three phases in order. Each phase produces a NEW timestamped file — never overwrite previous rounds.

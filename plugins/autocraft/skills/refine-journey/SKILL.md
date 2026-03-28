@@ -1,6 +1,6 @@
 ---
 name: refine-journey
-description: Evaluate the output of a journey-builder run, identify where the skill instructions failed, and edit SKILL.md to fix those gaps. Run after every journey-builder run to continuously improve the skill.
+description: Evaluate the output of a journey-builder run, identify where the skill instructions failed, and edit AGENTS.md (or add pitfalls) to fix those gaps. Run after every journey-builder run to continuously improve the skill.
 argument-hint: [spec-file-path]
 context: fork
 agent: general-purpose
@@ -26,7 +26,7 @@ Read everything produced by the last journey-builder run:
 2. **The spec file** — re-read in full
 3. **Generated test code** — read every test file in the most recent journey folder
 4. **Screenshots** — read ALL screenshots in the most recent journey's `screenshots/` folder
-5. **`SKILL.md`** (at repo root) — read the current journey-builder skill instructions carefully
+5. **`AGENTS.md`** (at repo root, if it exists) — read the current project-specific instructions
 
 ---
 
@@ -117,7 +117,7 @@ Write this score to `journey-refinement-log.md` (create if missing), with timest
 
 ## Phase 4: Diagnose Skill Instruction Failures
 
-For each gap found in Phase 2, ask: **"which instruction in SKILL.md was missing, unclear, or too weak to prevent this?"**
+For each gap found in Phase 2, ask: **"what instruction was missing, unclear, or too weak to prevent this?"**
 
 Apply 5 Whys to trace back to the skill instruction:
 
@@ -130,8 +130,9 @@ Why 3: Why was it instructed that way?
 Why 4: Why does the skill text say that (or not say that)?
 Why 5: Why does that gap exist in the skill?
 
-Instruction Gap: <exact section or missing section in SKILL.md>
+Instruction Gap: <what's missing — in AGENTS.md, pitfalls gist, or journey-builder skill>
 Fix: <specific new or revised instruction to add>
+Target: <AGENTS.md if project-specific, pitfalls gist if platform-specific>
 ```
 
 Common instruction failure patterns:
@@ -151,25 +152,28 @@ Common instruction failure patterns:
 
 ---
 
-## Phase 5: Rewrite SKILL.md
+## Phase 5: Write Fixes to the Right Place
 
-For each diagnosed instruction gap, make a targeted edit to the root `SKILL.md`:
+For each diagnosed instruction gap, decide WHERE the fix belongs:
 
-Rules for editing:
+**Platform-specific patterns** (SwiftUI, XCUITest, xcodegen, codesign, Playwright, etc.) → **Add a pitfall to the gist.** These are reusable across all projects.
+```bash
+gh gist edit 84a5c108d5742c850704a5088a3f4cbf -a <category>-<short-name>.md
+```
+
+**Project-specific rules** (this app's architecture decisions, known violations, app-specific workflows) → **Edit `AGENTS.md` at the project root** (create if missing).
+
+Rules for editing AGENTS.md:
 - **Surgical edits** — change the specific weak section, don't rewrite everything
 - **Concrete over abstract** — replace "verify it works" with exact commands and expected output
 - **Must not should** — change optional-sounding language to mandatory
 - **Add examples** — when a rule is abstract, add a concrete right-vs-wrong example
-- **Add checkpoints** — if phases get skipped, add gates: "Do not proceed to Step N+1 until X is confirmed"
-- **Add recovery paths** — for every "run X", add "if X fails, do Y"
 
 **Anti-bloat rule:**
 - Every sentence must cause the agent to DO something. Cut concept descriptions.
 - Prefer sharpening an existing rule over adding a new one.
 - After edits, count total lines. If net growth > 20 lines, find something to cut.
 - No duplicate rules across sections — merge them.
-
-After editing, re-read the entire SKILL.md and check internal consistency.
 
 ---
 
@@ -191,7 +195,7 @@ Append to `journey-refinement-log.md`:
 1. <failure> — Root cause: <instruction gap>
 2. ...
 
-### Changes Made to SKILL.md
+### Changes Made to AGENTS.md / Pitfalls
 1. Section "<section>": <what changed and why>
 2. ...
 
@@ -210,6 +214,6 @@ Output a concise summary:
 - Score from this run
 - Test speed and delta
 - Top 3 failures found
-- What was changed in SKILL.md
+- What was changed in AGENTS.md or added to pitfalls gist
 - Exact command to run next: `/journey-builder`
 - What to watch for in the next run

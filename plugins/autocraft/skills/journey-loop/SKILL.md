@@ -29,7 +29,7 @@ If no argument given, use `spec.md` in the current directory.
 | `journeys/*/` | Builder | Refiner, Orchestrator, Watcher |
 | `journeys/*/screenshot-timing.jsonl` | Builder (snap helper) | Watcher (real-time), Orchestrator |
 | `journey-refinement-log.md` | Refiner | Orchestrator |
-| `SKILL.md` (repo root) | Refiner | Builder (each restart) |
+| `AGENTS.md` (repo root) | Refiner | Builder (each restart) |
 | `journey-loop-state.md` | Orchestrator | Orchestrator (resume) |
 | `journey-state.md` | Builder | Builder, Orchestrator |
 
@@ -48,7 +48,7 @@ Create or resume `journey-loop-state.md`:
 **Status:** running
 
 ## Iteration History
-| # | Journey Built | Duration | Score | SKILL.md Changes | Decision |
+| # | Journey Built | Duration | Score | AGENTS.md Changes | Decision |
 |---|--------------|----------|-------|-----------------|----------|
 ```
 
@@ -73,9 +73,9 @@ gh gist view 84a5c108d5742c850704a5088a3f4cbf -f <filename>
 
 Include the full pitfalls content in the builder agent's prompt so it has them available.
 
-### Step 1: Read Current SKILL.md + Journey State
+### Step 1: Read Current AGENTS.md + Journey State
 
-Before each iteration, read the root `SKILL.md` fresh. The refiner may have changed it.
+Before each iteration, read the root `AGENTS.md` fresh (create if missing). The refiner may have changed it.
 
 Also read `journey-state.md` to determine what to work on:
 
@@ -96,7 +96,7 @@ rm -f journeys/{NNN}-{name}/screenshot-timing.jsonl
 ```
 
 **2c. Launch the Builder Agent in background.** Spawn a new Agent (run_in_background=true) with:
-1. The full content of `SKILL.md` as instructions
+1. The full content of `AGENTS.md` as instructions (if it exists)
 2. The full content of all pitfall files from the gist
 3. The current `journey-state.md` content
 4. Clear directive: work on the first in-progress/needs-extension journey, or create the next new journey for uncovered spec requirements
@@ -137,7 +137,10 @@ Run this Bash command in the background. When it exits with code 1, a timing vio
 **Outcome A — Builder completes normally (no violations):**
 The watcher found no SLOW entries. Proceed to Step 3 (Refiner).
 
-**Outcome B — Watcher killed the test (violation detected):**
+**Outcome B — Builder completes but evidence review finds gaps:**
+The orchestrator reads the screenshots and timing log. If the snap index sequence has large gaps (e.g., snap names jump from "090-..." to "103-..." skipping the entire recording phase), the journey has silently skipped phases. Re-launch the builder with a directive to investigate and fix the gaps. Include the specific missing phases in the prompt.
+
+**Outcome C — Watcher killed the test (violation detected):**
 1. Read `screenshot-timing.jsonl` to find all SLOW entries
 2. For each SLOW entry, read the test code to find what happens between the previous screenshot and the slow one
 3. **Research**: Is it possible to make this step <= 3 seconds?
@@ -167,14 +170,14 @@ After the builder completes, spawn a new Agent with the full content of the refi
 Wait for the refiner to complete. It will:
 - Evaluate the builder's output
 - Write a score to `journey-refinement-log.md`
-- Edit `SKILL.md` with improvements
+- Edit `AGENTS.md` with project-specific improvements, or add platform-specific pitfalls to the gist
 
 ### Step 4: Read the Score + Journey State
 
 Read `journey-refinement-log.md`. Extract from the most recent entry:
 - `Score:` — the percentage
 - `Failures Found:` — list of failures
-- `Changes Made to SKILL.md:` — what was changed
+- `Changes Made to AGENTS.md:` — what was changed
 
 Read `journey-state.md` to check:
 - Is the current journey `polished` with all tests passing AND all mapped acceptance criteria covered?
@@ -227,5 +230,5 @@ Run all tests with: <exact test command>
 
 - **Max iterations:** 10. If not at 95% after 10, stop and report current state with top remaining failures.
 - **Stall detection:** If the builder produces no changes for 2 consecutive iterations, log the stall and proceed to the refiner — it can diagnose why the builder stalled.
-- **Never modify the spec** — the spec is read-only. Only `SKILL.md` gets improved.
+- **Never modify the spec** — the spec is read-only. Only `AGENTS.md` and the pitfalls gist get improved.
 - **Pitfall gist is append-only** — add new pitfalls, never delete existing ones.
