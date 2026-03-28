@@ -5,7 +5,7 @@ description: Build and test the longest uncovered user journey from spec.md. Rea
 
 # Journey Builder
 
-Build one user journey at a time. Each journey is a realistic path through the app tested like a real user — with screenshots at every step. Each journey MUST take at least 10 minutes to run end-to-end.
+Build one user journey at a time. Each journey is a realistic path through the app tested like a real user — with screenshots at every step. Each journey MUST cover specific spec requirements and verify ALL of their acceptance criteria with real implementations and real outcomes. Map each journey to its spec requirements in journey.md. A journey is complete when every mapped acceptance criterion has: (1) a real implementation (no placeholders/simulations), (2) a test step that exercises it, and (3) a screenshot proving it works.
 
 **Depth-chain principle:** A journey is a chain of actions where each step produces an outcome that the next step consumes or verifies. Example: setup → create a recording → verify it appears in library → play it back → check transcript syncs → search for it → delete it → verify it's gone. Every step must exercise something NEW. If you've already clicked a button and verified it works, do not click it again.
 
@@ -101,9 +101,9 @@ Read `journey-state.md` in the project root (create if missing). This file track
 ```
 
 **Decision logic:**
-1. Find the first journey where status is `in-progress`, `needs-extension`, OR duration is blank/estimated (`~`)/under 10 minutes — work on that one
-2. Only if ALL existing journeys are `polished` with real measured durations >= 10 minutes, pick the next uncovered path from the spec
-3. A journey is `polished` ONLY when: all tests pass, all 3 polish rounds done, AND test duration >= 10 minutes (actual measured wall-clock time, not estimated)
+1. Find the first journey where status is `in-progress` or `needs-extension` — work on that one
+2. Only if ALL existing journeys are `polished` with all acceptance criteria covered, pick the next uncovered path from the spec
+3. A journey is `polished` ONLY when: all tests pass, all 3 polish rounds done, AND all mapped acceptance criteria are covered with real implementations (no placeholders, no simulations)
 
 ## Step 2: Read spec + existing journeys
 
@@ -114,16 +114,24 @@ Read `spec.md`. Read every `journeys/*/journey.md` to know what's covered.
 **If extending an existing journey** (status is `in-progress` or `needs-extension`):
 - Read the existing `journey.md` and test file
 - Run the test and measure duration
-- If under 10 minutes, extend the workflow chain deeper — add steps that produce NEW outcomes: create data, modify it, verify persistence, test edge cases, trigger error states and recover
+- Check which acceptance criteria from the mapped spec requirements are NOT yet covered. For each uncovered criterion: implement the real feature if missing, add a test step that exercises it, and take a screenshot proving it works. A journey is not done until ALL mapped acceptance criteria are covered.
 - Update `journey.md` with the new steps
 
 **If creating a new journey:**
 - Find the longest uncovered user path
 - Create numbered folder: `journeys/{NNN}-{name}/`
 - Write `journey.md` as a depth-chain: each step produces output the next step uses
+- **Spec mapping (MANDATORY):** At the top of `journey.md`, list which spec requirements this journey covers and which acceptance criteria it will verify. Example:
+  ```markdown
+  ## Spec Coverage
+  - P0-0: First Launch Setup (criteria 1-6)
+  - P0-2: Window Picker (criteria 1, 2, 5)
+  - P0-3: Screen + Audio Recording (criteria 1, 4, 6)
+  ```
+  Every criterion listed MUST be implemented and tested by the end of the journey.
 - Include: complete workflow (create → use → modify → verify → clean up), edge cases, error recovery, data persistence checks
 
-**Anti-repetition rule (HARD):** Before finalizing, scan the test for repeated interactions. If the same element is clicked more than twice, or the same navigation path is traversed more than once, it is padding — remove it. The 10-minute target must be hit through feature depth (more features tested end-to-end), NEVER through repeating interactions already performed. Clicking through 5 model cards once is testing; clicking through them 3 times is waste.
+**Anti-repetition rule (HARD):** Before finalizing, scan the test for repeated interactions. If the same element is clicked more than twice, or the same navigation path is traversed more than once, it is padding — remove it. Coverage must be achieved through feature depth (more acceptance criteria verified), NEVER through repeating interactions already performed. Clicking through 5 model cards once is testing; clicking through them 3 times is waste. Downloading multiple models exercises the same code path — one download verifies the download flow.
 
 ## Step 4: Write the test
 
@@ -267,7 +275,7 @@ time xcodebuild test \
 {skill-base-dir}/scripts/extract-screenshots.sh /tmp/test-results.xcresult journeys/{NNN}-{name}/screenshots
 ```
 
-**Duration check:** If the test completes in under 10 minutes, go back to Step 3 and add more depth (new features, not repetition). Do NOT proceed to polish until the journey is substantial enough.
+**Acceptance criteria check:** After the test run, check which mapped acceptance criteria are NOT yet covered. If any are missing, go back to Step 3 and implement them. Do NOT proceed to polish until all mapped criteria have real implementations.
 
 **Timing:** The journey-loop's watcher enforces the 3-second gap rule by monitoring `screenshot-timing.jsonl` in real-time. If your test is killed by the watcher, you'll be restarted after the gap is fixed. See the 3-second gap rule in Step 4.
 
@@ -312,18 +320,18 @@ Write `journeys/{NNN}-{name}/ui_review_round{N}_{YYYY-MM-DD}_{HHMMSS}.md`.
 
 **Round 3 is the final gate** — every screenshot must Pass or have issues explicitly deferred with justification.
 
-## Step 7: Final verification + duration check
+## Step 7: Final verification + acceptance criteria audit
 
 Run unit tests + this journey's UI test one last time. Both must pass.
 
-Measure the final test duration. If still under 10 minutes after all polish rounds, add more steps and re-run.
+Run the acceptance criteria audit: for each criterion mapped to this journey in journey.md, verify (1) the production code implements it for real (grep for placeholder/simulated/fake), (2) the test exercises it, (3) a screenshot captures the result. List any gaps and fix them before proceeding.
 
 ## Step 8: Update journey state
 
 Update `journey-state.md`:
-- Set status to `polished` if test duration >= 10 minutes AND all tests pass
-- Set status to `needs-extension` if test duration < 10 minutes
-- **Record the ACTUAL measured wall-clock time** from the `xcodebuild test` run (e.g., `12m30s`). NEVER write estimated durations like `~5m`. If you didn't measure it, write `unmeasured` and treat status as `needs-extension`.
+- Set status to `polished` if all tests pass AND all mapped acceptance criteria are covered with real implementations
+- Set status to `needs-extension` if any mapped acceptance criterion is missing implementation, test step, or screenshot
+- **Record the ACTUAL measured wall-clock time** from the `xcodebuild test` run (for reference, not as a gate)
 - Record the current date
 
 ## Step 9: Commit
@@ -343,7 +351,7 @@ If any blockers were solved during this run, confirm that new pitfall files were
 - **No sleep waits** — NEVER use `sleep()`, `Thread.sleep()`, or fixed-time waits. Tests must complete as fast as possible.
 - **Use .exists, not waitForExistence** — Use `waitForExistence()` ONLY once per view transition. For all other element checks in the same loaded view, use `.exists` (synchronous, ~50ms). Never use `waitForExistence` on elements that are already rendered. This is the difference between a 238s test and a 61s test.
 - **3-second gap enforcement** — Every gap between consecutive screenshots must be <= 3s. The `snap()` helper writes `screenshot-timing.jsonl` in real-time. The journey-loop watcher monitors this file and kills the test on violations. Mark unavoidable long gaps with `// SLOW-OK: reason` before the snap call.
-- **10-minute minimum** — A journey under 10 minutes is not done. Extend it by going deeper into the feature chain (new outcomes, new verifications), NEVER by repeating actions already tested. This is a HARD limit.
+- **Acceptance criteria coverage** — A journey is not done until every acceptance criterion from its mapped spec requirements has a real implementation, a test step, and a screenshot. Duration is not a target. Extend by covering uncovered criteria, not by repeating the same code path (e.g., downloading multiple models exercises the same download→progress→complete flow — one download is sufficient to verify that flow).
 - **No repetitive padding** — NEVER repeat an interaction already performed to pad time. No cycling through the same cards multiple times. No navigating between the same tabs repeatedly. No typing multiple search queries that all produce the same result. Each interaction must test something the previous interactions didn't. If you catch yourself writing "round 2" or "again" in a comment, you are padding.
 - **Actual durations only** — Never write estimated durations (e.g., `~5m`) to `journey-state.md`. Always measure from the real `xcodebuild test` run.
 - **Work on existing journeys first** — Check `journey-state.md` before creating new ones.

@@ -177,7 +177,7 @@ Read `journey-refinement-log.md`. Extract from the most recent entry:
 - `Changes Made to SKILL.md:` — what was changed
 
 Read `journey-state.md` to check:
-- Is the current journey `polished` with a real measured duration >= 10m AND all tests pass?
+- Is the current journey `polished` with all tests passing AND all mapped acceptance criteria covered?
 - Is the duration an actual measured value (not estimated with `~`)?
 - If either check fails, the next iteration must continue working on it
 
@@ -208,7 +208,7 @@ Stop when **all** of:
 - Overall score >= 95%
 - Build passes
 - All journey tests pass
-- Every journey in `journey-state.md` has status `polished` with duration >= 10 minutes
+- Every journey in `journey-state.md` has status `polished` (all acceptance criteria covered)
 - Every requirement in the spec has a journey covering it
 
 When stopped, output:
