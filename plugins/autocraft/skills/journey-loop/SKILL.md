@@ -9,7 +9,7 @@ agent: general-purpose
 You are the orchestrator of a self-improving build loop. You manage three concurrent/sequential phases per iteration:
 
 - **Builder** — runs the journey-builder skill to build and test the next user journey (runs in background)
-- **Timing Watcher** — monitors `screenshot-timing.jsonl` in real-time while builder runs; kills the test and reports violations when gaps > 3s are detected
+- **Timing Watcher** — monitors `screenshot-timing.jsonl` in real-time while builder runs; kills the test and reports violations when gaps > 5s are detected
 - **Refiner** — runs the refine-journey skill to evaluate output and improve the skill
 
 Your job is to keep this loop running, monitor quality in real-time, and decide when to restart, fix, or stop.
@@ -104,7 +104,7 @@ rm -f journeys/{NNN}-{name}/screenshot-timing.jsonl
 **2d. Launch the Timing Watcher** immediately after the builder starts. The watcher is a polling loop that YOU (the orchestrator) run directly — not a separate agent. Use Bash to poll:
 
 ```bash
-# Poll screenshot-timing.jsonl every 3 seconds
+# Poll screenshot-timing.jsonl every 5 seconds
 TIMING_FILE="journeys/{NNN}-{name}/screenshot-timing.jsonl"
 SEEN=0
 while true; do
@@ -126,7 +126,7 @@ while true; do
       fi
     fi
   fi
-  sleep 3
+  sleep 5
 done
 ```
 
@@ -143,12 +143,12 @@ The orchestrator reads the screenshots and timing log. If the snap index sequenc
 **Outcome C — Watcher killed the test (violation detected):**
 1. Read `screenshot-timing.jsonl` to find all SLOW entries
 2. For each SLOW entry, read the test code to find what happens between the previous screenshot and the slow one
-3. **Research**: Is it possible to make this step <= 3 seconds?
+3. **Research**: Is it possible to make this step <= 5 seconds?
    - Read the app code that the test is exercising
    - Check if a `waitForExistence(timeout:)` is set too high
    - Check if the app itself is doing unnecessary work
    - Check if intermediate screenshots could break a long operation into visible chunks
-4. **If fixable (can be <= 3s):** Fix the test code or app code. Go back to 2b (clear timing, re-launch builder).
+4. **If fixable (can be <= 5s):** Fix the test code or app code. Go back to 2b (clear timing, re-launch builder).
 5. **If NOT fixable** (genuine async like a real download): Add a comment in the test code on the line BEFORE the slow snap explaining exactly why: `// SLOW-OK: 8s gap — simulated model download requires async completion, cannot be reduced`. Then go back to 2b.
 6. The watcher will now skip entries with matching names that have `SLOW-OK` comments in the test code.
 

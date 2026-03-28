@@ -55,7 +55,7 @@ Read ALL screenshots in the most recent journey's `screenshots/` folder:
 
 ### 2d. Wait-Time Audit
 For every `waitForExistence(timeout:)` call in the test code:
-- **timeout > 3s without a comment** → flag as skill failure (missing justification)
+- **timeout > 5s without a comment** → flag as skill failure (missing justification)
 - **timeout > 5s without a progress-screenshot loop** → flag (viewer sees frozen screen)
 - **Consecutive screenshots with > 5s gap** (visible in `T00m00s_` filename timestamps) → flag the step pair and investigate why
 

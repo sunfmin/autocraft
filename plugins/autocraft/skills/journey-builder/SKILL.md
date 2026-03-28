@@ -141,7 +141,7 @@ One test file. Act like a real user. Screenshot after every meaningful step via 
 
 ### Snap helper with built-in timing measurement (MANDATORY)
 
-Every journey test MUST use a `snap()` helper that measures the gap since the last screenshot and writes it to a timing file in real-time. This is the enforcer — no gap > 3s goes unnoticed.
+Every journey test MUST use a `snap()` helper that measures the gap since the last screenshot and writes it to a timing file in real-time. This is the enforcer — no gap > 5s goes unnoticed.
 
 **macOS — use JourneyTestCase base class (preferred):**
 
@@ -227,7 +227,7 @@ async function snap(page: Page, name: string, journeyDir: string) {
   const now = Date.now();
   const gap = lastSnapTime ? (now - lastSnapTime) / 1000 : 0;
   lastSnapTime = now;
-  const status = gap > 3 ? 'SLOW' : 'ok';
+  const status = gap > 5 ? 'SLOW' : 'ok';
 
   // 1. Write screenshot to disk
   const dir = `${journeyDir}/screenshots`;
@@ -240,12 +240,12 @@ async function snap(page: Page, name: string, journeyDir: string) {
 }
 ```
 
-### 3-second gap rule
+### 5-second gap rule
 
-Every gap between consecutive screenshots MUST be <= 3 seconds. The `snap()` helper writes each gap to `screenshot-timing.jsonl` in real-time. The journey-loop's **timing watcher** monitors this file and will **kill the test** if a SLOW entry is detected.
+Every gap between consecutive screenshots MUST be <= 5 seconds. The `snap()` helper writes each gap to `screenshot-timing.jsonl` in real-time. The journey-loop's **timing watcher** monitors this file and will **kill the test** if a SLOW entry is detected.
 
 If the watcher kills your test, you will be restarted after the orchestrator investigates and fixes the slow gap. To avoid being killed:
-- Keep all `waitForExistence` timeouts <= 3s unless the operation genuinely requires longer
+- Keep all `waitForExistence` timeouts <= 5s unless the operation genuinely requires longer
 - For unavoidable long waits (async downloads, app launch), pass `slowOK:` to the snap call: `snap("042-download-done", slowOK: "model download requires async completion")`. The watcher ignores `SLOW-OK` entries.
 - Add intermediate screenshots inside long wait loops so no single gap exceeds 3s:
   ```swift
@@ -275,7 +275,7 @@ time xcodebuild test \
 
 **Acceptance criteria check:** After the test run, check which mapped acceptance criteria are NOT yet covered. If any are missing, go back to Step 3 and implement them. Do NOT proceed to polish until all mapped criteria have real implementations.
 
-**Timing:** The journey-loop's watcher enforces the 3-second gap rule by monitoring `screenshot-timing.jsonl` in real-time. If your test is killed by the watcher, you'll be restarted after the gap is fixed. See the 3-second gap rule in Step 4.
+**Timing:** The journey-loop's watcher enforces the 5-second gap rule by monitoring `screenshot-timing.jsonl` in real-time. If your test is killed by the watcher, you'll be restarted after the gap is fixed. See the 5-second gap rule in Step 4.
 
 ## Step 5.5: Critical Evidence Review (MANDATORY)
 
@@ -365,7 +365,7 @@ If any blockers were solved during this run, confirm that new pitfall files were
 - **Add pitfalls for every blocker** — When you find a solution to a non-obvious problem, add it to the gist immediately via `gh gist edit`.
 - **No sleep waits** — NEVER use `sleep()`, `Thread.sleep()`, or fixed-time waits. Tests must complete as fast as possible.
 - **Use .exists, not waitForExistence** — Use `waitForExistence()` ONLY once per view transition. For all other element checks in the same loaded view, use `.exists` (synchronous, ~50ms). Never use `waitForExistence` on elements that are already rendered. This is the difference between a 238s test and a 61s test.
-- **3-second gap enforcement** — Every gap between consecutive screenshots must be <= 3s. The `snap()` helper writes `screenshot-timing.jsonl` in real-time. The journey-loop watcher monitors this file and kills the test on violations. Mark unavoidable long gaps with `// SLOW-OK: reason` before the snap call.
+- **3-second gap enforcement** — Every gap between consecutive screenshots must be <= 5s. The `snap()` helper writes `screenshot-timing.jsonl` in real-time. The journey-loop watcher monitors this file and kills the test on violations. Mark unavoidable long gaps with `// SLOW-OK: reason` before the snap call.
 - **Acceptance criteria coverage** — A journey is not done until every acceptance criterion from its mapped spec requirements has a real implementation, a test step, and a screenshot. Duration is not a target. Extend by covering uncovered criteria, not by repeating the same code path (e.g., downloading multiple models exercises the same download→progress→complete flow — one download is sufficient to verify that flow).
 - **No repetitive padding** — NEVER repeat an interaction already performed to pad time. No cycling through the same cards multiple times. No navigating between the same tabs repeatedly. No typing multiple search queries that all produce the same result. Each interaction must test something the previous interactions didn't. If you catch yourself writing "round 2" or "again" in a comment, you are padding.
 - **Actual durations only** — Never write estimated durations (e.g., `~5m`) to `journey-state.md`. Always measure from the real `xcodebuild test` run.

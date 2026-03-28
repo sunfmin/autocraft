@@ -1,7 +1,7 @@
 {
   "name": "autocraft",
   "description": "Build and test user journeys from spec.md with screenshot verification, self-improving refinement loop, and design quality checks",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": {
     "name": "sunfmin"
   },
