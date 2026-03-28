@@ -1,0 +1,13 @@
+{
+  "name": "autocraft",
+  "description": "Build and test user journeys from spec.md with screenshot verification, self-improving refinement loop, and design quality checks",
+  "version": "1.0.0",
+  "author": {
+    "name": "sunfmin"
+  },
+  "skills": [
+    "./skills/journey-builder",
+    "./skills/refine-journey",
+    "./skills/journey-loop"
+  ]
+}
