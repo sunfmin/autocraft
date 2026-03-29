@@ -145,6 +145,7 @@ After Builder finishes, spawn an Inspector Agent with:
 1. The Inspector Instructions (Part 3 below)
 2. The spec file path
 3. Directive: evaluate the most recent journey
+4. The `/frontend-design` skill content — invoke `/frontend-design` yourself (Orchestrator) and include its full output in the Inspector's prompt so the Inspector can apply its design principles during screenshot review without interrupting its own flow
 
 Wait for Inspector verdict.
 
@@ -393,10 +394,10 @@ Only after ALL scans pass:
 Run the build. Run the journey's tests. Record pass/fail and timing.
 
 ### 2b. Screenshot Review
-Read ALL screenshots in `journeys/{NNN}/screenshots/`. For each:
+Read ALL screenshots in `journeys/{NNN}/screenshots/`. Apply the `/frontend-design` skill's design principles (loaded by the Orchestrator — see below) to evaluate each screenshot:
 - Does it show a feature WORKING (real content) or just EXISTING (empty)?
 - App-only? (No desktop, dock, other windows)
-- Design quality: typography, spacing, alignment?
+- Design quality: typography, spacing, alignment, color, hierarchy?
 
 ### 2c. Spec Coverage Check
 For every acceptance criterion mapped to this journey:
