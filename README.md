@@ -12,32 +12,18 @@ A Claude Code plugin that builds and tests user journeys from `spec.md` with scr
 
 ## Installation
 
-Requires Claude Code 1.0.33 or later.
-
-### Option 1: Install via marketplace
-
 ```bash
-/plugin marketplace add sunfmin/autocraft
-/plugin install autocraft
-```
-
-### Option 2: Install from local clone
-
-```bash
-git clone https://github.com/sunfmin/autocraft.git
-claude --plugin-dir ./autocraft/plugins/autocraft
+npx skills add sunfmin/autocraft
 ```
 
 ## Skills
 
-Once installed, skills are available under the `autocraft:` namespace:
-
 | Skill | Command | When to use |
 |-------|---------|-------------|
-| `preflight-permissions` | `/autocraft:preflight-permissions` | **Run once first.** Sets up code signing, grants macOS TCC permissions, runs a smoke test. |
-| `journey-builder` | `/autocraft:journey-builder` | Build and test the next uncovered user journey from `spec.md`. |
-| `refine-journey` | `/autocraft:refine-journey` | Evaluate the last journey-builder run, score it, and improve `AGENTS.md`. |
-| `journey-loop` | `/autocraft:journey-loop [spec.md]` | Run the full automated loop until all spec requirements are covered. |
+| `preflight-permissions` | `/preflight-permissions` | **Run once first.** Sets up code signing, grants macOS TCC permissions, runs a smoke test. |
+| `journey-builder` | `/journey-builder` | Build and test the next uncovered user journey from `spec.md`. |
+| `refine-journey` | `/refine-journey` | Evaluate the last journey-builder run, score it, and improve `AGENTS.md`. |
+| `journey-loop` | `/journey-loop [spec.md]` | Run the full automated loop until all spec requirements are covered. |
 
 ## Quick start
 
@@ -45,19 +31,19 @@ Once installed, skills are available under the `autocraft:` namespace:
 
 2. Run preflight once to set up permissions:
    ```
-   /autocraft:preflight-permissions
+   /preflight-permissions
    ```
 
 3. Start the automated loop:
    ```
-   /autocraft:journey-loop
+   /journey-loop
    ```
 
    The loop runs until every acceptance criterion in your spec has a real implementation, a test step, and a screenshot proving it works. It stops only when the overall score reaches 95% **and** all criteria are covered.
 
 4. Or build journeys one at a time:
    ```
-   /autocraft:journey-builder
+   /journey-builder
    ```
 
 ## Project layout
