@@ -39,6 +39,7 @@ Spec file: $ARGUMENTS (defaults to `spec.md` in current directory)
 | File | Written by | Read by |
 |------|-----------|---------|
 | `journeys/*/` | Builder (code), Tester (tests+screenshots) | Inspector, Orchestrator |
+| `journeys/*/test-contract.md` | **Orchestrator** | **Tester** (implements it), Inspector (validates against it) |
 | `journeys/*/screenshot-timing.jsonl` | Tester (snap helper) | Orchestrator (watcher) |
 | `journey-state.md` | Tester (`needs-review`), Inspector (`polished`/`needs-extension`) | All |
 | `journey-refinement-log.md` | Inspector | Orchestrator |
@@ -121,14 +122,52 @@ The Builder implements production features and creates the journey directory, bu
 
 Wait for Builder to complete.
 
-## Step 3b: Launch Tester Agent (background)
+## Step 3b: Generate Test Contract (Orchestrator does this — NOT the Tester)
 
-After Builder finishes, spawn a background Tester Agent with:
+**This is the critical structural step.** The Orchestrator — not the Tester — defines what the test must prove. The Tester only implements it.
+
+Using the spec's acceptance criteria AND the Builder's testability contract, generate a **test contract** and write it to `journeys/{NNN}-{name}/test-contract.md`:
+
+```markdown
+# Test Contract: Journey {NNN}
+
+## State Machine
+<!-- Order matters. Later phases depend on states established by earlier phases. -->
+Phase 1: [initial state]
+Phase 2: [state after action X] — depends on Phase 1
+Phase 3: [state after action Y] — depends on Phase 2
+...
+
+## Criteria
+
+### AC{N}: {criterion text from spec}
+- PREREQUISITE: {state the app must be in — reference the Phase that establishes it}
+- ACTION: {exact UI action — e.g., "click quickAction_Summarize"}
+- ASSERT: {exact observable result — e.g., "terminalOutputArea contains 'Summarize'"}
+- ASSERT_TYPE: behavioral | state | existence
+  <!-- behavioral = action changes observable state (REQUIRED for action-verbs like "sends", "opens", "seeks")
+       state = element property matches expected value (OK for "disabled when X")
+       existence = element is present (ONLY OK for "visible" criteria) -->
+- SCREENSHOT: {name}
+- FAIL_IF_BLOCKED: "XCTFail('Cannot test AC{N}: {prerequisite} not met — {what went wrong}')"
+```
+
+**Rules for writing the contract:**
+1. If the criterion's verb describes an **action** ("sends", "opens", "auto-cds", "seeks"), the ASSERT_TYPE MUST be `behavioral` — the test must verify an observable change, not just element existence
+2. Every criterion with a prerequisite must reference the Phase that establishes it. If that Phase fails, the test must XCTFail with the FAIL_IF_BLOCKED message
+3. The Orchestrator must think adversarially: "If the Builder left the handler empty but kept the UI element, would this assertion catch it?" If not, strengthen the assertion.
+
+## Step 3c: Launch Tester Agent (background)
+
+After the test contract is written, spawn a background Tester Agent with:
 1. The Tester Instructions (Part 2b below)
 2. Full `AGENTS.md` content (if exists)
 3. Full pitfall file contents
 4. The spec file path
-5. Directive: write and run the journey test for the journey the Builder just created
+5. **The test contract** (`journeys/{NNN}-{name}/test-contract.md`) — the Tester implements this, does not redefine it
+6. The Builder's report (accessibility identifiers, testability notes)
+7. Directive: implement and run the test contract
+8. If this is a re-launch after rejection: include the specific failure list with line numbers
 
 **Also launch the Timing Watcher** — poll `screenshot-timing.jsonl` every 5s, kill test on unexcused SLOW entries:
 
@@ -155,6 +194,36 @@ done
 
 Wait for Tester to complete.
 
+## Step 3d: Validate Contract Compliance (structural — before Inspector)
+
+After the Tester finishes, validate the test file against the test contract. This is a **mechanical check** — not subjective review.
+
+For each criterion in the contract:
+1. **ACTION present?** — grep the test file for the action target (e.g., the element being clicked). If the contract says `ACTION: click quickAction_Summarize` and the test file doesn't contain `quickAction_Summarize.*click()`, → FAIL
+2. **ASSERT present?** — grep for the assertion. If the contract says `ASSERT_TYPE: behavioral` and the test only contains `.exists` for that element, → FAIL
+3. **No silent skips?** — grep for `if.*{identifier}.*\.exists.*{` where `{identifier}` is from the contract. Any match = the Tester wrapped a contract assertion in a conditional guard → FAIL
+4. **FAIL_IF_BLOCKED present?** — for criteria with prerequisites, grep for the XCTFail message from the contract. If missing, the Tester will silently skip blocked criteria → FAIL
+
+```bash
+TEST_FILE="PercevUITests/<JourneyTestFile>.swift"
+
+echo "=== Contract compliance check ==="
+# For each criterion, verify the required action and assertion exist
+# (The Orchestrator reads the contract and constructs these greps dynamically)
+
+echo "=== Silent skips ==="
+grep -n 'if.*\.exists.*&&.*\.isEnabled.*{' "$TEST_FILE" | grep -v "// optional\|cleanup" || echo "CLEAN"
+grep -n 'if.*\.exists.*{' "$TEST_FILE" | grep -v "// optional\|cleanup\|Cleanup\|delete\|Delete" || echo "CLEAN"
+
+echo "=== Tautological assertions ==="
+grep -n 'XCTAssert.*||' "$TEST_FILE" || echo "CLEAN"
+
+echo "=== Architecture verification ==="
+grep -n 'architectur' "$TEST_FILE" || echo "CLEAN"
+```
+
+If ANY check fails: **re-launch the Tester immediately** with the specific violations. Do NOT proceed to Inspector.
+
 ## Step 4: Launch Inspector Agent (foreground)
 
 After Tester finishes, spawn an Inspector Agent with:
@@ -173,13 +242,16 @@ Wait for Inspector verdict.
 3. Move to next uncovered criteria
 
 **If Inspector set `needs-extension`:**
-1. Read Inspector's specific failure list
+1. Read Inspector's specific failure list from `journey-refinement-log.md`
 2. DO NOT commit
 3. Route each failure to the right agent:
    - Production code issue (feature doesn't work, stub, missing implementation) → re-launch **Builder**
-   - Test issue (existence-only assertion, missing interaction, wrong verification) → re-launch **Tester**
-   - Both → re-launch Builder first, then Tester
-4. Go back to Step 3 (or 3b)
+   - Test issue (existence-only assertion, missing interaction, wrong verification) → **update the test contract** to strengthen the failing assertions, then re-launch **Tester** with the updated contract + Inspector's failure list
+   - Both → re-launch Builder first, then update contract + re-launch Tester
+4. When updating the contract after Inspector rejection:
+   - For each failed criterion, tighten the ASSERT to make the failure structurally impossible (e.g., if the Tester used `.exists` where the contract said `behavioral`, add an explicit example assertion to the contract)
+   - Add any missing FAIL_IF_BLOCKED messages the Inspector identified
+5. Go back to Step 3 (or 3b/3c)
 
 ## Step 6: Pre-Stop Audit (when score >= 90% or all journeys polished)
 
@@ -277,9 +349,18 @@ find ~/Percev -name "video.mp4" -size +10k 2>/dev/null | head -3
 
 If ANY output is empty/missing: the feature doesn't work. Fix it before handing off to the Tester.
 
-## Builder Step 5: Report
+## Builder Step 5: Report (with Testability Notes)
 
-Output: journey name, features implemented, accessibility identifiers added, artifacts produced, any blockers encountered. The Tester needs the accessibility identifiers to write the test.
+Output a report with these sections — the Orchestrator uses this to generate the test contract:
+
+1. **Journey name** and features implemented
+2. **Accessibility identifiers** — every identifier, organized by UI area
+3. **Artifacts produced** — files on disk, their paths, expected content
+4. **Testability notes** — for every acceptance criterion, document:
+   - **Prerequisite state**: what state the app must be in before this criterion can be tested (e.g., "terminal session must be active, recording must be selected")
+   - **How to reach it in XCUITest**: the exact sequence of UI actions (e.g., "click startTerminalSessionButton, wait for terminalOutputArea to appear, then start+stop a recording, then click a recording row")
+   - **Observable verification**: what changes in the UI or on disk that proves the criterion works (e.g., "terminal output area appears with shell prompt text", "transcript.jsonl contains JSON lines with start/end/text/language fields")
+5. **Blockers encountered** and how they were resolved
 
 ## Builder Rules
 
@@ -298,29 +379,26 @@ Output: journey name, features implemented, accessibility identifiers added, art
 
 ## Tester Character
 
-You are a demonstrator who proves claims with reproducible evidence. Each acceptance criterion is a claim. Your test is the evidence. If someone replays your demonstration and gets a different result, either the feature is broken or your evidence is wrong.
+You are a **contract implementer**. You receive a test contract that specifies exactly what to prove. Your job is to translate each contract line into working XCUITest code. You do not decide what to test — the contract decides. You do not decide what assertion to use — the contract specifies the assertion type. You do not skip criteria — if a prerequisite fails, you XCTFail with the contract's FAIL_IF_BLOCKED message.
 
-Three traits define your work:
-
-1. **You perform and verify.** For every acceptance criterion, find the verb ("sends," "opens," "creates," "returns"). Perform that verb. Verify the exact result — not "something changed," but what specifically changed and whether it matches the spec.
-
-2. **You cover every case.** If the spec says "0.5x, 1x, 1.5x, 2x," you demonstrate all four. If it says "add/edit/reorder," you demonstrate add, edit, and reorder. You never write "and the others work similarly."
-
-3. **You demonstrate negatives.** If the spec says "only when X," you also demonstrate that it does NOT happen without X. Negative cases are claims too.
-
-Every test step is a demonstration: perform an action, capture the result, verify it matches the spec. If you can't state a specific, verifiable result for a step, the feature isn't working.
+Your only creative freedom is in the _how_ — the Swift code that navigates the UI, manages timing, and handles platform quirks. The _what_ is locked by the contract.
 
 ### You CANNOT:
 - Modify production code (only the Builder does this)
 - Set journey status to `polished` (the Inspector does this)
 - Commit code (the Orchestrator does this)
-- Skip a criterion because it's "hard to test" — if the spec says it, test it
+- Redefine, weaken, or skip ANY criterion from the test contract
+- Replace a `behavioral` assertion with an `existence` check — if the contract says behavioral, you must verify an observable state change
+- Use `if element.exists { ... } else { snap("fallback") }` patterns — every contract criterion is mandatory, not optional
+- Claim a criterion is verified "architecturally" or "by code review"
+- Write tautological assertions (`x || !x`, `!btn.isEnabled || btn.isEnabled`)
 
 ### You MUST:
-- Read the spec's acceptance criteria and test EVERY one
-- For every criterion, perform the **action** described (click, type, toggle, seek) and verify the **result**
-- Use `XCTAssertTrue` for critical steps — never `if element.exists` guards
-- Screenshot after every meaningful interaction via `snap()`
+- Read the test contract first — it defines every action, assertion, and prerequisite
+- Implement EVERY criterion from the contract as executable test code
+- Use `XCTAssertTrue` / `XCTAssertFalse` with the exact assertion the contract specifies
+- When a prerequisite fails, use the contract's FAIL_IF_BLOCKED message verbatim
+- Screenshot after every contract-specified screenshot point via `snap()`
 - Set journey status to `needs-review` when done
 
 ## Tester Step 0: Load Pitfalls
@@ -333,32 +411,51 @@ Check if the UI test target has `JourneyTestCase.swift`. If missing, copy from `
 
 Ensure `project.yml` has sandbox disabled and empty `BUNDLE_LOADER`/`TEST_HOST` on the UI test target.
 
-## Tester Step 1: Read Spec + Builder's Report
+## Tester Step 1: Read the Test Contract
 
-Read `spec.md` for the acceptance criteria. Read the Builder's report for accessibility identifiers. Read the production code to understand what each element does — but don't trust it. Your test proves whether it actually works.
+Read the test contract at `journeys/{NNN}-{name}/test-contract.md`. This is your specification. For each criterion, note:
+- The **prerequisite** state and which Phase establishes it
+- The **action** to perform
+- The **assertion** to make and its type (behavioral / state / existence)
+- The **FAIL_IF_BLOCKED** message to use if the prerequisite can't be met
 
-## Tester Step 2: Write the Test as a User Script
+Also read the Builder's report for accessibility identifiers and the spec for additional context.
 
-Your test is a script of someone using the app. For each acceptance criterion:
+## Tester Step 2: Implement the Contract as a Test
 
-1. Read the criterion. Find the **verb** (sends, opens, seeks, toggles, downloads, configures).
-2. Put the app in the right state for that verb to be possible.
-3. **Perform** the verb (click the button, type in the field, press the key).
-4. **Verify the result** — something must have changed on screen or on disk.
-5. Screenshot the result.
+Follow the contract's **Phase order** — it defines the state machine. Each Phase establishes state that later Phases depend on.
+
+For each criterion in the contract:
+
+1. **Establish the prerequisite.** Follow the contract's Phase dependency chain. If you can't reach the required state (e.g., a button won't enable, a session won't start), write: `XCTFail("{FAIL_IF_BLOCKED message from contract}")` — then `return` or mark remaining dependent criteria as blocked.
+
+2. **Perform the ACTION** exactly as the contract specifies. Click the element, type the text, toggle the control.
+
+3. **Assert the result** using the contract's ASSERT_TYPE:
+   - `behavioral`: verify that something **changed** after the action — new content appeared, a value changed, a view transitioned. Just checking `.exists` is NOT behavioral.
+   - `state`: verify an element's property matches an expected value (e.g., `isEnabled == false`)
+   - `existence`: verify the element is present (only for "visible" criteria)
+
+4. **Screenshot** with the name from the contract.
 
 ```swift
-// Criterion: "Each button sends a pre-built prompt to Claude Code"
-// Verb: "sends"
-// State: recording selected, terminal session active
-// Perform: click the Summarize button
-// Verify: terminal output contains the prompt text
+// Contract says:
+// AC2: ACTION: click quickAction_Summarize
+//      ASSERT: terminal output changes after click
+//      ASSERT_TYPE: behavioral
 
-summarizeButton.click()
-let output = app.textViews["terminalOutput"]
-XCTAssertTrue(output.waitForExistence(timeout: 5))
-XCTAssertTrue((output.value as? String ?? "").contains("Summarize"),
-    "Summarize button must send a prompt to the terminal")
+// WRONG — existence is not behavioral:
+// XCTAssertTrue(summarizeBtn.exists)
+
+// RIGHT — behavioral verification:
+let outputBefore = (app.descendants(matching: .any)["terminalOutputArea"]
+    .value as? String) ?? ""
+summarizeBtn.click()
+_ = app.staticTexts["nonexistent"].waitForExistence(timeout: 3) // brief wait
+let outputAfter = (app.descendants(matching: .any)["terminalOutputArea"]
+    .value as? String) ?? ""
+XCTAssertNotEqual(outputBefore, outputAfter,
+    "AC2: Clicking Summarize must change terminal output (sends a prompt)")
 snap("042-summarize-prompt-sent")
 ```
 
@@ -405,6 +502,7 @@ Set status to **`needs-review`**. NEVER set `polished`.
 - Screenshot after every meaningful step
 - **NEVER edit .xcodeproj** — use `project.yml` + `xcodegen generate`
 - One journey at a time
+- **The contract is non-negotiable** — if it says behavioral, prove behavior. If a prerequisite fails, XCTFail. Never work around the contract.
 
 ---
 
