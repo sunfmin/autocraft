@@ -11,7 +11,11 @@
       "name": "autocraft",
       "description": "Build and test user journeys from spec.md with screenshot verification, self-improving refinement loop, and design quality checks",
       "version": "1.2.0",
-      "source": "./plugins/autocraft"
+      "source": {
+        "source": "github",
+        "repo": "sunfmin/autocraft",
+        "path": "plugins/autocraft"
+      }
     }
   ]
 }
