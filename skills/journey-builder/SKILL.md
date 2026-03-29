@@ -5,6 +5,19 @@ description: Build and test the longest uncovered user journey from spec.md. Rea
 
 # Journey Builder
 
+You are building something you'll be proud of. Every journey you produce will be reviewed — by the refiner, by the orchestrator, and by the user. Your screenshots are your portfolio. Your test assertions are your guarantees. Your review files are your engineering notes.
+
+Before you mark anything as "done", ask yourself: "If someone reads this test, runs it, and looks at the screenshots — will they see a feature that genuinely works? Or will they see an element that exists but proves nothing?"
+
+The difference between a good journey and a fake one is simple:
+- A good journey's screenshots tell a story you can follow
+- A good journey's assertions would FAIL if the feature broke
+- A good journey's reviews contain observations only someone who READ the screenshots would make
+
+A fake journey passes tests, produces files, and claims "polished" — but when you look at the screenshots, the search shows "No Results", the transcript says "No transcript yet", and the review files are empty. Build the real thing.
+
+---
+
 Build one user journey at a time. Each journey is a realistic path through the app tested like a real user — with screenshots at every step. Each journey MUST cover specific spec requirements and verify ALL of their acceptance criteria with real implementations and real outcomes. Map each journey to its spec requirements in journey.md. A journey is complete when every mapped acceptance criterion has: (1) a real implementation (no placeholders/simulations), (2) a test step that exercises it, and (3) a screenshot proving it works.
 
 **Depth-chain principle:** A journey is a chain of actions where each step produces an outcome that the next step consumes or verifies. Example: setup → create a recording → verify it appears in library → play it back → check transcript syncs → search for it → delete it → verify it's gone. Every step must exercise something NEW. If you've already clicked a button and verified it works, do not click it again.
@@ -157,6 +170,22 @@ This two-set distinction is your working ground truth for the rest of this run.
 
 One test file. Act like a real user. Screenshot after every meaningful step via XCTAttachment (macOS) or Playwright locator screenshot (web). Name: `{journey}-{NNN}-{step}.png`. The extract script adds elapsed-time prefixes (`T00m05s_`) automatically — you do NOT add timestamps in code.
 
+### Write Honest Tests
+
+An honest test fails when the feature breaks. A dishonest test passes no matter what.
+
+Ask yourself: "If I deleted the feature implementation, would this test still pass?" If yes — the test is dishonest. It's testing that UI elements exist, not that features work.
+
+Common dishonest patterns:
+- `XCTAssertTrue(hasResults || hasNoResults)` — passes whether search works or not
+- `if transcriptArea.exists { snap() } else { snap() }` — takes a screenshot either way
+- `XCTAssertTrue(element.exists)` on a container that's always rendered, ignoring its content
+
+Honest alternative: assert on the CONTENT, not just the container.
+- Search: assert result count > 0
+- Transcript: assert the text label has real content
+- Playback: assert "Video file not found" does NOT exist
+
 ### Snap helper with built-in timing measurement (MANDATORY)
 
 Every journey test MUST use a `snap()` helper that measures the gap since the last screenshot and writes it to a timing file in real-time. This is the enforcer — no gap > 5s goes unnoticed.
@@ -295,63 +324,42 @@ time xcodebuild test \
 
 **Timing:** The journey-loop's watcher enforces the 5-second gap rule by monitoring `screenshot-timing.jsonl` in real-time. If your test is killed by the watcher, you'll be restarted after the gap is fixed. See the 5-second gap rule in Step 4.
 
-## Step 5.5: Critical Evidence Review (MANDATORY)
+## Step 5.5: See What You Built
 
-A passing test is not proof of correctness. After every test run, verify that the test actually exercised what it claims.
+You just ran a test and produced screenshots. Now look at them — every single one.
 
-**5.5a. Read all screenshots in order.** Look at every screenshot in `journeys/{NNN}-{name}/screenshots/` sequentially. Narrate the story they tell: "Consent screen → model selection → downloading → permissions → library → ..."
+Read each screenshot file in `journeys/{NNN}-{name}/screenshots/` with the Read tool. Don't skim. Don't assume. LOOK.
 
-**5.5b. Compare the visual story against journey.md.** For each phase in the journey, there must be screenshot evidence that it happened. If a phase has no screenshots (e.g., no recording screenshots, no playback-with-video screenshots), that phase was silently skipped.
+As you look at each screenshot, ask:
+- Does this show a feature WORKING, or just a UI element EXISTING?
+- If I showed this to a user, would they say "that works" or "that's blank"?
+- Does the search screenshot show actual results, or "No Results"?
+- Does the transcript screenshot show real text, or "No transcript yet"?
+- Does the playback screenshot show real video, or a placeholder?
 
-**5.5c. For every missing phase, investigate WHY.** Read the test code for that section. Find which condition caused it to skip:
-- An `if element.exists` guard that evaluated to false? → Read the app's SwiftUI code to find why the element wasn't found. Common causes: wrong element type (View with onTapGesture instead of Button), async content not loaded yet (need waitForExistence on child, not just container), missing accessibility identifier.
-- A `waitForExistence` that timed out? → Read the app code to find why the element never appeared. Is the view not being presented? Is the data not loading?
-- An assertion that passed vacuously? → The test asserts something exists, but the surrounding code never runs because an earlier guard skipped it.
+If any screenshot shows an empty/error/placeholder state where a working feature should be — that's YOUR bug. Fix it before moving on. Don't write an if-guard to skip it. Don't accept both success and failure as "passing."
 
-**5.5d. Fix the root cause.** Don't add more `if` guards or workarounds. Fix the app code or test code so the phase actually executes. Then re-run the test and repeat this review.
+The screenshots are the truth. The test result is just a boolean.
 
-**Do NOT proceed to Step 6 (Polish) until every phase in the journey has screenshot evidence.**
+**For every journey phase that has NO screenshot:** Read the test code for that section. Find which condition caused it to skip — an `if element.exists` guard that was false, a timeout, a vacuous assertion. Fix the root cause in the app code or test code so the phase actually executes. Then re-run and look again.
 
-## Step 6: Polish loop (3 rounds)
+**Do NOT proceed to Step 6 until every phase in the journey has screenshot evidence showing it works.**
 
-Run this loop 3 times (round 1, 2, 3). Each round does all three phases in order. Each phase produces a NEW timestamped file — never overwrite previous rounds.
+## Step 6: Make It Better
 
-### Phase A: Testability Review
+You have a working journey. Now make it genuinely better — not to satisfy a checklist, but because you can see what needs improving.
 
-Review app code touched by this journey. Check:
-- ViewModels accept protocol dependencies via initializer injection
-- Use Cases are framework-free (no UIKit/SwiftUI/AppKit imports)
-- Side effects (network, disk, permissions) behind protocols
-- DependencyContainer uses real implementations; unit test factory uses protocol-based test doubles (NOT used in the running app)
-- No shared mutable singletons
-- State transitions are testable (given/when/then)
+**Round 1 — Look at your screenshots.** Read every screenshot again. Write down what you see — the good and the bad. What works? What looks broken, ugly, or empty? What would a real user think? Put this in `journeys/{NNN}-{name}/review_round1_{YYYY-MM-DD}_{HHMMSS}.md`. If you have nothing to write, you aren't looking hard enough.
 
-Fix issues: extract protocols, add DI, move logic out of Views. Write fast unit tests (< 1s total). Run them.
+Also review the app code for testability: are ViewModels using protocol dependencies? Are side effects behind protocols? Fix what you find.
 
-Write `journeys/{NNN}-{name}/testability_review_round{N}_{YYYY-MM-DD}_{HHMMSS}.md`.
+**Round 2 — Read your test code.** Would this test catch a real regression? If the feature broke tomorrow, would this test fail? Or would it silently pass because the assertion is too weak? Fix the weak spots. Remove dead snap() calls. Add assertions that verify content, not just existence. Write what you changed in `journeys/{NNN}-{name}/review_round2_{YYYY-MM-DD}_{HHMMSS}.md`.
 
-### Phase B: Refactor UI test
+**Round 3 — Read the app code you touched.** Is it real, or is it faking something? Would a user get actual value from this code? If you find simulations, placeholders, or dead paths — replace them. Also do a final visual review of all screenshots for design quality (typography, spacing, platform conventions). Write what you found in `journeys/{NNN}-{name}/review_round3_{YYYY-MM-DD}_{HHMMSS}.md`.
 
-Clean up the journey test code:
-- Readable steps with helpers/page objects where needed
-- **NEVER use `sleep()` or fixed-time waits to simulate user reading/thinking time.** Tests MUST complete as fast as possible. Always wait for elements (`waitForExistence(timeout:)`) or conditions instead. The only acceptable fixed wait is when no element/condition can be checked (e.g., animation with no completion signal), and even then keep it under 1 second.
-- Accessibility identifiers on every interactive element
+Each review file should read like engineering notes from someone who genuinely examined the work — not like a compliance report. If you write "No issues found" without evidence, you're lying to yourself.
 
-### Phase C: UI Review — Design-Driven
-
-Read every screenshot in `journeys/{NNN}-{name}/screenshots/`. Review with both platform convention AND design quality lenses.
-
-**Platform Conventions:**
-- macOS: HIG compliance — toolbar, sidebar, window chrome, system colors
-- Web: Responsive layout, standard navigation patterns, accessibility
-
-**Design Quality:** Apply the `frontend-design` skill principles when reviewing. Evaluate typography, color, spatial composition, visual details, motion, and overall polish level. Flag anti-patterns like generic fonts, flat backgrounds, missing hover states, and unstyled empty states.
-
-Fix all issues in the view code. Re-run the test. Extract fresh screenshots to `screenshots/`.
-
-Write `journeys/{NNN}-{name}/ui_review_round{N}_{YYYY-MM-DD}_{HHMMSS}.md`.
-
-**Round 3 is the final gate** — every screenshot must Pass or have issues explicitly deferred with justification.
+Re-run the test after each round. Extract fresh screenshots.
 
 ## Step 7: Final verification + acceptance criteria audit
 

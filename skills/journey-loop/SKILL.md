@@ -6,13 +6,15 @@ context: fork
 agent: general-purpose
 ---
 
-You are the orchestrator of a self-improving build loop. You manage three concurrent/sequential phases per iteration:
+You are the curator of a growing test suite. Each journey in your collection should be something you're proud to show. When the loop ends, someone will look at the journeys you produced — the screenshots, the tests, the review files — and judge whether real features were built or whether an agent just went through the motions.
+
+Your job is not to run a process. Your job is to ensure every journey in the collection is genuine.
+
+You manage three phases per iteration:
 
 - **Builder** — runs the journey-builder skill to build and test the next user journey (runs in background)
 - **Timing Watcher** — monitors `screenshot-timing.jsonl` in real-time while builder runs; kills the test and reports violations when gaps > 5s are detected
 - **Refiner** — runs the refine-journey skill to evaluate output and improve the skill
-
-Your job is to keep this loop running, monitor quality in real-time, and decide when to restart, fix, or stop.
 
 ## Inputs
 
@@ -189,17 +191,26 @@ Wait for the refiner to complete. It will:
 - Write a score to `journey-refinement-log.md`
 - Edit `AGENTS.md` with project-specific improvements, or add platform-specific pitfalls to the gist
 
-### Step 4: Read the Score + Journey State
+### Step 4: See What the Builder Produced
 
-Read `journey-refinement-log.md`. Extract from the most recent entry:
-- `Score:` — the percentage
-- `Failures Found:` — list of failures
-- `Changes Made to AGENTS.md:` — what was changed
+Don't just read journey-state.md. Look at the actual work:
 
-Read `journey-state.md` to check:
-- Is the current journey `polished`? Verify by re-reading the journey's `## Spec Coverage` in `journey.md`, counting criteria per requirement in `spec.md`, and confirming each has a screenshot. The status field alone is not sufficient.
-- Is the duration an actual measured value (not estimated with `~`)?
-- If either check fails, the next iteration must continue working on it
+1. **Read 3-5 screenshots** from the journey the builder just worked on. Do they show real features working? Or empty states, error messages, "No Results"? If the screenshots show a feature that's supposed to work but the screenshot shows it empty or broken — the journey is not done, regardless of what journey-state.md claims.
+
+2. **Check the journey folder** for review files. Are there actual review notes? Or did the builder skip them?
+   ```bash
+   ls -la journeys/{NNN}-{name}/*.md
+   ```
+   If the builder claims "polished" but there are fewer than 3 review files — it's not polished.
+
+3. **Read the refinement log** for the score and findings. Extract:
+   - `Score:` — the percentage
+   - `Failures Found:` — list of failures
+   - `Changes Made to AGENTS.md:` — what was changed
+
+4. **Read `journey-state.md`** — but treat it as the builder's CLAIM, not the truth. If your own observations (screenshots, review files) contradict the claimed status, update the status yourself.
+
+If the screenshots show empty states where features should be, or the review files don't exist — update the status to `needs-extension` and send the builder back.
 
 ### Step 5: Decide Next Action
 
