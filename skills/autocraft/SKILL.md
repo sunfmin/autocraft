@@ -219,7 +219,11 @@ If the human provides feedback mid-loop, re-launch the Analyst to classify and r
 
 ## Step 0.5: Load Playbooks (every iteration)
 
-Resolve the registry gist ID: read `.autocraft` from repo root if it exists, otherwise use default `bca7073d567ca8b7ba79ff4bad5fb2c5`. Fetch the registry, then for each registered playbook, fetch and read ALL files from its gist. Include their full content in the Builder's and Tester's prompts.
+Resolve the registry gist ID: read `.autocraft` from repo root if it exists, otherwise use default `bca7073d567ca8b7ba79ff4bad5fb2c5`. Fetch the registry, then for each registered playbook, fetch and read ALL files from its gist.
+
+**Role-specific entries** (prefixed `role-{agent}-`) contain the platform-specific commands, code patterns, and templates that the corresponding agent needs. Include them in each agent's prompt alongside the pitfall entries.
+
+**Template entries** (prefixed `template-`) contain base class code or boilerplate. The Builder and Tester copy these into the project as needed.
 
 ## Step 1: Build Acceptance Criteria Master List
 
@@ -249,20 +253,9 @@ Read `journey-state.md` to determine what to work on:
 
 ## Step 2: Pre-Build Simulation Scan
 
-Before launching the Builder, scan for existing simulation infrastructure:
+Before launching the Builder, scan for simulation infrastructure that bypasses real code paths. The playbook provides platform-specific scan commands (`role-orchestrator-{platform}.md`).
 
-```bash
-echo "=== Bypass flags in tests ==="
-grep -rn "generateTestTranscript\|useTestDownloads\|useFakeData" *UITests/ --include="*.swift" || echo "CLEAN"
-
-echo "=== Stub functions in production ==="
-grep -rn 'return ""$\|return \[\]$' */  --include="*.swift" | grep -v "UITests\|Tests\|test\|guard\|else\|catch" || echo "CLEAN"
-
-echo "=== Test data generators in production ==="
-grep -rn "testSentences\|generateTest\|hardcodedSegments" */ --include="*.swift" | grep -v "UITests\|Tests" || echo "CLEAN"
-```
-
-If not CLEAN: include in Builder's directive as **first priority to fix**.
+If any scan is not CLEAN: include in Builder's directive as **first priority to fix**.
 
 ## Step 3: Launch Builder Agent (background)
 
@@ -306,12 +299,13 @@ Phase 3: [state after action Y] — depends on Phase 2
        state = element property matches expected value (OK for "disabled when X")
        existence = element is present (ONLY OK for "visible" criteria) -->
 - SCREENSHOT: {name}
-- FAIL_IF_BLOCKED: "XCTFail('Cannot test AC{N}: {prerequisite} not met — {what went wrong}')"
+- FAIL_IF_BLOCKED: "FAIL('Cannot test AC{N}: {prerequisite} not met — {what went wrong}')"
+  <!-- The playbook maps FAIL to the platform's assertion failure macro (e.g., XCTFail for macOS/XCUITest) -->
 ```
 
 **Rules for writing the contract:**
 1. If the criterion's verb describes an **action** ("sends", "opens", "auto-cds", "seeks"), the ASSERT_TYPE MUST be `behavioral` — the test must verify an observable change, not just element existence
-2. Every criterion with a prerequisite must reference the Phase that establishes it. If that Phase fails, the test must XCTFail with the FAIL_IF_BLOCKED message
+2. Every criterion with a prerequisite must reference the Phase that establishes it. If that Phase fails, the test must FAIL with the FAIL_IF_BLOCKED message
 3. The Orchestrator must think adversarially: "If the Builder left the handler empty but kept the UI element, would this assertion catch it?" If not, strengthen the assertion.
 4. Every `behavioral` criterion MUST have an ASSERT_CONTAINS that would FAIL if the action produced an error, a prompt, or any unintended intermediate state instead of the expected result. "Output changed" or "output is not empty" are NEVER sufficient for ASSERT_CONTAINS.
 
@@ -342,7 +336,7 @@ while true; do
       SEEN=$TOTAL
       if [ "$SLOW_COUNT" -gt "0" ]; then
         echo "VIOLATION: $SLOW_COUNT SLOW entries"
-        pkill -f "xcodebuild.*test.*-only-testing" 2>/dev/null || true
+        # Kill test process — platform-specific command from playbook (role-orchestrator-{platform}.md)
         exit 1
       fi
     fi
@@ -358,29 +352,13 @@ Wait for Tester to complete.
 After the Tester finishes, validate the test file against the test contract. This is a **mechanical check** — not subjective review.
 
 For each criterion in the contract:
-1. **ACTION present?** — grep the test file for the action target (e.g., the element being clicked). If the contract says `ACTION: click quickAction_Summarize` and the test file doesn't contain `quickAction_Summarize.*click()`, → FAIL
-2. **ASSERT present?** — grep for the assertion. If the contract says `ASSERT_TYPE: behavioral` and the test only contains `.exists` for that element, → FAIL
-3. **No silent skips?** — grep for `if.*{identifier}.*\.exists.*{` where `{identifier}` is from the contract. Any match = the Tester wrapped a contract assertion in a conditional guard → FAIL
-4. **FAIL_IF_BLOCKED present?** — for criteria with prerequisites, grep for the XCTFail message from the contract. If missing, the Tester will silently skip blocked criteria → FAIL
-5. **ASSERT_CONTAINS enforced?** — for every `behavioral` criterion, grep the test file for a content-matching assertion (`contains`, `hasPrefix`, `count >`, `components(separatedBy:)`) near the action. If the test only uses `XCTAssertNotEqual` without a content check → FAIL. A "changed" assertion without a "contains expected content" assertion is incomplete.
+1. **ACTION present?** — grep the test file for the action target (e.g., the element being clicked). If the contract specifies an action and the test file doesn't contain the corresponding interaction → FAIL
+2. **ASSERT present?** — grep for the assertion. If the contract says `ASSERT_TYPE: behavioral` and the test only checks existence → FAIL
+3. **No silent skips?** — grep for conditional guards that wrap contract assertions. Any match = the Tester made a mandatory assertion optional → FAIL
+4. **FAIL_IF_BLOCKED present?** — for criteria with prerequisites, grep for the FAIL message from the contract. If missing, the Tester will silently skip blocked criteria → FAIL
+5. **ASSERT_CONTAINS enforced?** — for every `behavioral` criterion, grep the test file for a content-matching assertion near the action. If the test only detects change without verifying expected content → FAIL
 
-```bash
-TEST_FILE="PercevUITests/<JourneyTestFile>.swift"
-
-echo "=== Contract compliance check ==="
-# For each criterion, verify the required action and assertion exist
-# (The Orchestrator reads the contract and constructs these greps dynamically)
-
-echo "=== Silent skips ==="
-grep -n 'if.*\.exists.*&&.*\.isEnabled.*{' "$TEST_FILE" | grep -v "// optional\|cleanup" || echo "CLEAN"
-grep -n 'if.*\.exists.*{' "$TEST_FILE" | grep -v "// optional\|cleanup\|Cleanup\|delete\|Delete" || echo "CLEAN"
-
-echo "=== Tautological assertions ==="
-grep -n 'XCTAssert.*||' "$TEST_FILE" || echo "CLEAN"
-
-echo "=== Architecture verification ==="
-grep -n 'architectur' "$TEST_FILE" || echo "CLEAN"
-```
+The playbook provides the platform-specific grep patterns and test file path conventions (`role-orchestrator-{platform}.md`). The Orchestrator constructs these checks dynamically from the contract.
 
 If ANY check fails: **re-launch the Tester immediately** with the specific violations. Do NOT proceed to Inspector.
 
@@ -434,28 +412,12 @@ ALL of:
 
 # Templates
 
-## JourneyTestCase.swift (macOS)
+The playbook provides the platform-specific test base class template (`template-journey-test-case.md`). Copy it into the test target if not already present. It provides:
+- Screenshot capture with dedup and timing
+- Setup/teardown lifecycle
+- Timing log for the Orchestrator's watcher
 
-Located at `{skill-base-dir}/templates/JourneyTestCase.swift`. Provides:
-- `snap(_:slowOK:)` — screenshot + timing + dedup + disk write
-- `setUpWithError()` — clears timing, creates dirs, launches app, ensures window
-- `tearDownWithError()` — terminates app
-
-Usage:
-```swift
-final class MyJourneyTests: JourneyTestCase {
-    override var journeyName: String { "001-first-launch" }
-    override func setUpWithError() throws {
-        app.launchArguments = ["-hasCompletedSetup", "NO"]
-        try super.setUpWithError()
-    }
-    func test_Journey() throws {
-        let el = app.images["icon"]
-        XCTAssertTrue(el.waitForExistence(timeout: 10))
-        snap("001-initial", slowOK: "app launch")
-    }
-}
-```
+Usage patterns and code examples are documented in the playbook template entry.
 
 ---
 

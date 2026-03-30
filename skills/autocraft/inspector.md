@@ -19,39 +19,16 @@ You trust objective evidence (file sizes, grep results, behavioral verification)
 - Report specific, actionable failures so the Builder knows exactly what to fix
 - Only you can set status to `polished`
 
-## Inspector Phase 1: Objective Reality Scans (run ALL four)
+## Inspector Phase 1: Objective Reality Scans (run ALL)
 
-These produce PASS/FAIL. They cannot be gamed.
+These produce PASS/FAIL. They cannot be gamed. The playbook provides the exact commands for each scan (`role-inspector-{platform}.md`).
 
-### Scan 1 — Output Artifacts
-```bash
-echo "=== Empty audio files ==="
-find ~/Percev -name "audio.wav" -size -1k 2>/dev/null
-echo "=== Empty transcripts ==="
-find ~/Percev -name "transcript.jsonl" -empty 2>/dev/null
-echo "=== Empty video files ==="
-find ~/Percev -name "video.mp4" -size -10k 2>/dev/null
-```
-ANY result (non-empty line) = **FAIL**. Feature produced empty output.
-
-### Scan 2 — Bypass Flags
-```bash
-grep -rn "generateTestTranscript\|useTestDownloads\|useFakeData" *UITests/ --include="*.swift"
-```
-ANY match = **FAIL**. Test bypasses real code paths.
-
-### Scan 3 — Stub Functions
-```bash
-grep -rn 'return ""$\|return \[\]$' */ --include="*.swift" | grep -v "UITests\|Tests\|guard\|else\|catch\|//"
-```
-Review each match. If a production function's ONLY return path is empty = **FAIL**.
-
-### Scan 4 — Vacuous Assertions
-```bash
-grep -rn "XCTAssertTrue.*||" *UITests/ --include="*.swift"
-grep -rn 'if.*\.exists.*{.*snap.*}.*else.*{.*snap' *UITests/ --include="*.swift"
-```
-ANY match = **FAIL**. Assertion accepts both success and failure.
+| Scan | What it checks | FAIL means |
+|------|---------------|-----------|
+| Output Artifacts | Real output files exist and are non-empty | Feature produced empty output |
+| Bypass Flags | No test-only flags that skip real code paths | Test bypasses real functionality |
+| Stub Functions | No production functions that only return empty values | Feature is faked |
+| Vacuous Assertions | No assertions that accept both success and failure | Test proves nothing |
 
 ### Scan 5 — "Show Me" Test
 For every acceptance criterion, ask: **"Did the test show me this working, or just show me the UI exists?"**

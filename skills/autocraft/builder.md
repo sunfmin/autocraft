@@ -32,11 +32,9 @@ gh api --method PATCH /gists/<gist-id> \
   -f "files[<category>-<short-name>.md][content]=$(cat /tmp/<category>-<short-name>.md)"
 ```
 
-## Builder Step 0.5: Copy Template Files (macOS)
+## Builder Step 0.5: Copy Template Files
 
-Check if the UI test target has `JourneyTestCase.swift`. If missing, copy from `{skill-base-dir}/templates/`.
-
-Ensure `project.yml` has sandbox disabled and empty `BUNDLE_LOADER`/`TEST_HOST` on the UI test target.
+Check if the test target has the journey test base class. If missing, copy from the playbook's template entry (`template-journey-test-case.md`). Apply platform-specific project configuration from the playbook (`role-builder-{platform}.md`).
 
 ## Builder Step 1: Read Spec + Existing Journeys
 
@@ -54,8 +52,8 @@ If creating new: find the longest uncovered path. Create `journeys/{NNN}-{name}/
 
 ## Builder Step 3: Integrate Real Dependencies
 
-If the spec names a library (whisper.cpp, ScreenCaptureKit, etc.):
-1. Add as real dependency (SPM, Carthage, vendored)
+If the spec names a library:
+1. Add as a real dependency using the platform's package manager (see playbook `role-builder-{platform}.md`)
 2. Verify it compiles
 3. Smoke-test the core API produces non-empty output
 4. Download real model files (not READMEs or placeholders)
@@ -63,18 +61,7 @@ If the spec names a library (whisper.cpp, ScreenCaptureKit, etc.):
 
 ## Builder Step 4: Verify the Build
 
-Build the project and verify it compiles. Run the app briefly to confirm the feature works manually. Verify output artifacts are real:
-
-```bash
-# Audio must be non-trivial (>1KB = actual audio, not just WAV header)
-find ~/Percev -name "audio.wav" -size +1k 2>/dev/null | head -3
-
-# Transcript must have content
-find ~/Percev -name "transcript.jsonl" ! -empty 2>/dev/null | head -3
-
-# Video must have content
-find ~/Percev -name "video.mp4" -size +10k 2>/dev/null | head -3
-```
+Build the project and verify it compiles. Run the app briefly to confirm the feature works manually. Verify output artifacts are real and non-empty using the playbook's verification commands (`role-builder-{platform}.md`).
 
 If ANY output is empty/missing: the feature doesn't work. Fix it before handing off to the Tester.
 
@@ -87,7 +74,7 @@ Output a report with these sections — the Orchestrator uses this to generate t
 3. **Artifacts produced** — files on disk, their paths, expected content
 4. **Testability notes** — for every acceptance criterion, document:
    - **Prerequisite state**: what state the app must be in before this criterion can be tested (e.g., "terminal session must be active, recording must be selected")
-   - **How to reach it in XCUITest**: the exact sequence of UI actions (e.g., "click startTerminalSessionButton, wait for terminalOutputArea to appear, then start+stop a recording, then click a recording row")
+   - **How to reach it in a UI test**: the exact sequence of UI actions (e.g., "click startRecordingButton, wait for outputArea to appear, then start+stop a recording, then click a recording row")
    - **Observable verification**: what changes in the UI or on disk that proves the criterion works (e.g., "terminal output area appears with shell prompt text", "transcript.jsonl contains JSON lines with start/end/text/language fields")
 5. **Blockers encountered** and how they were resolved
 
@@ -95,7 +82,7 @@ Output a report with these sections — the Orchestrator uses this to generate t
 
 - One journey at a time
 - Fix before moving on — never skip broken features
-- Every interactive UI element must have an `accessibilityIdentifier`
+- Every interactive UI element must have a **test identifier** (the playbook specifies the platform's identifier mechanism)
 - **NEVER simulate** — no `SimulatedXxx`, `FakeXxx`, `MockXxx` in production code
 - **NEVER mock test data** — generate via earlier journeys or real app operations
-- **NEVER edit .xcodeproj** — use `project.yml` + `xcodegen generate`
+- **NEVER edit generated project files** — use the platform's project generator (see playbook)
