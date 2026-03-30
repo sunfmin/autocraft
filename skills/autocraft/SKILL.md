@@ -86,14 +86,26 @@ Playbooks are shared, platform-specific knowledge bases stored as GitHub gists. 
 
 ### Playbook Registry
 
-The registry is a gist: `bca7073d567ca8b7ba79ff4bad5fb2c5`
+Default registry gist: `bca7073d567ca8b7ba79ff4bad5fb2c5`
+
+**Local override:** If `.autocraft` exists at the repo root, read the registry gist ID from it:
+
+```json
+{
+  "registry_gist_id": "bca7073d567ca8b7ba79ff4bad5fb2c5"
+}
+```
+
+The Orchestrator resolves the registry ID in this order:
+1. `.autocraft` file in repo root → use `registry_gist_id`
+2. No `.autocraft` file → use default `bca7073d567ca8b7ba79ff4bad5fb2c5`
 
 ```bash
-# Read the registry
-gh gist view bca7073d567ca8b7ba79ff4bad5fb2c5 -f playbooks.json
+# Read the registry (replace <registry-id> with resolved ID)
+gh gist view <registry-id> -f playbooks.json
 
 # Update the registry (non-interactive)
-gh api --method PATCH /gists/bca7073d567ca8b7ba79ff4bad5fb2c5 \
+gh api --method PATCH /gists/<registry-id> \
   -f "files[playbooks.json][content]=$(cat /tmp/playbooks.json)"
 ```
 
@@ -135,13 +147,13 @@ When the user wants to add a new playbook (e.g., "create a web playbook"):
    gh gist create --public -d "Autocraft playbook: {platform}" /tmp/entry1.md /tmp/entry2.md ...
    # Capture the gist ID from the output URL (last path segment)
    ```
-4. **Register the playbook** — fetch the registry gist, add the new entry, push back:
+4. **Register the playbook** — fetch the registry gist (resolve ID from `.autocraft` or default), add the new entry, push back:
    ```bash
    # Fetch current registry
-   gh gist view bca7073d567ca8b7ba79ff4bad5fb2c5 -f playbooks.json > /tmp/playbooks.json
+   gh gist view <registry-id> -f playbooks.json > /tmp/playbooks.json
    # Add new entry to the playbooks array (use jq or manual edit)
    # Push updated registry
-   gh api --method PATCH /gists/bca7073d567ca8b7ba79ff4bad5fb2c5 \
+   gh api --method PATCH /gists/<registry-id> \
      -f "files[playbooks.json][content]=$(cat /tmp/playbooks.json)"
    ```
    Platform keys: lowercase, no spaces (e.g., `macos`, `web`, `ios`, `android`, `go`, `python`)
@@ -164,11 +176,29 @@ Each entry in a playbook should follow this format (2-5 sentences per section mi
 
 ### Selecting Playbooks for a Project
 
-The Orchestrator fetches the registry gist (`bca7073d567ca8b7ba79ff4bad5fb2c5`) at startup and loads ALL registered playbooks. If the project only uses one platform, only that playbook's entries are included in agent prompts.
+The Orchestrator resolves the registry gist ID (from `.autocraft` or the default) at startup and loads ALL registered playbooks. If the project only uses one platform, only that playbook's entries are included in agent prompts.
 
 **Error handling:** If the registry gist fetch fails (network, auth), warn the user and proceed without playbooks. Do not abort the build loop.
 
-**Ownership:** Only the gist owner can update the registry. If you need to register a new playbook but don't own the registry gist, fork it: `gh gist fork bca7073d567ca8b7ba79ff4bad5fb2c5`, then use your fork's ID going forward.
+**Ownership (auto-fork):** Only the gist owner can update the registry. When the Orchestrator needs to update the registry (e.g., registering a new playbook) and the `gh api PATCH` fails with a 404 or 403, automatically fork and switch:
+
+```bash
+# 1. Fork the registry
+FORK_URL=$(gh gist fork <registry-id> 2>&1)
+FORK_ID=$(echo "$FORK_URL" | grep -oE '[a-f0-9]{20,}' | tail -1)
+
+# 2. Save fork ID to .autocraft
+echo "{\"registry_gist_id\": \"$FORK_ID\"}" > .autocraft
+
+# 3. Retry the update with the fork
+gh api --method PATCH /gists/$FORK_ID \
+  -f "files[playbooks.json][content]=$(cat /tmp/playbooks.json)"
+
+# 4. Commit .autocraft
+git add .autocraft && git commit -m "Use forked playbook registry: $FORK_ID"
+```
+
+This is transparent — future sessions read `.autocraft` and use the fork automatically.
 
 ---
 
@@ -189,7 +219,7 @@ If the human provides feedback mid-loop, re-launch the Analyst to classify and r
 
 ## Step 0.5: Load Playbooks (every iteration)
 
-Fetch the playbook registry from gist `bca7073d567ca8b7ba79ff4bad5fb2c5`. For each registered playbook, fetch and read ALL files from its gist. Include their full content in the Builder's and Tester's prompts.
+Resolve the registry gist ID: read `.autocraft` from repo root if it exists, otherwise use default `bca7073d567ca8b7ba79ff4bad5fb2c5`. Fetch the registry, then for each registered playbook, fetch and read ALL files from its gist. Include their full content in the Builder's and Tester's prompts.
 
 ## Step 1: Build Acceptance Criteria Master List
 
