@@ -34,7 +34,11 @@ When first invoked, or when the human provides new feedback:
 Translate the human's intent into structured specs. Write to the spec source (local file or gist):
 
 - **Local file:** Write directly to `spec.md`
-- **Gist:** Use `gh gist edit <gist-id> -f spec.md` to update the gist
+- **Gist:** Write updated spec to `/tmp/spec-updated.md`, then push non-interactively:
+  ```bash
+  gh api --method PATCH /gists/<gist-id> \
+    -f "files[spec.md][content]=$(cat /tmp/spec-updated.md)"
+  ```
 
 Follow this format:
 
@@ -63,7 +67,7 @@ When updating an existing spec:
 - Add new requirements at the end
 - Add new criteria under existing requirements where they belong
 - Mark changed criteria with `<!-- Updated: {date} — {reason} -->`
-- For gist specs: fetch with `gh gist view`, edit locally, then push with `gh gist edit <gist-id> -f spec.md`
+- For gist specs: fetch with `gh gist view`, edit locally in `/tmp/`, then push with `gh api --method PATCH`
 
 ## Analyst Step 3: Classify and Route Feedback
 
@@ -78,9 +82,9 @@ When the human provides feedback during or after the build loop, classify it and
 
 ### Classification
 - **Type:** {bug | feature-request | ux-issue | spec-clarification | praise}
-- **Routed to:** {Builder | Tester | Inspector | spec.md}
+- **Routed to:** {Builder | Tester | Inspector | spec.md} (comma-separate if multiple, e.g., "Builder, Tester")
 - **Priority:** {blocking | important | nice-to-have}
-- **Rationale:** {why this feedback goes to this agent}
+- **Rationale:** {why this feedback goes to this agent (or agents)}
 
 ### Action Items
 - [ ] {specific, actionable item for the target agent}
@@ -97,6 +101,13 @@ When the human provides feedback during or after the build loop, classify it and
 | "That's not what I meant by..." | **spec.md** — rewrite criterion | "By 'search' I meant full-text, not just filename" |
 | "This is exactly what I wanted" | **Praise log** — no action, but note what worked | Confirms approach for future reference |
 
+**Multi-routing:** When feedback spans multiple agents (e.g., "test passes but video is blank" could be Builder or Tester), route to all relevant agents with comma-separated `Routed to` field. Each agent acts on its portion independently.
+
+**Priority classification criteria:**
+- **blocking** — app doesn't launch, core flow is completely broken, data loss. Work cannot continue.
+- **important** — feature is wrong or degraded but app still runs. Should be fixed before next `polished` verdict.
+- **nice-to-have** — polish, aesthetics, minor UX improvements. Can wait until current journey is done.
+
 ## Analyst Step 4: Present to Human for Confirmation
 
 Before the Orchestrator acts on new or updated specs:
@@ -104,7 +115,7 @@ Before the Orchestrator acts on new or updated specs:
 1. **Show the spec diff** — display exactly what was added or changed in spec.md
 2. **Show routed feedback** — display which feedback items are going to which agents
 3. **Ask for confirmation** — "Does this capture what you want? Anything to add or change?"
-4. **Only after human confirms** — signal the Orchestrator to proceed
+4. **Only after human confirms** — the Analyst's job is done. The Orchestrator (which spawned you) will read the updated `spec.md` and `feedback-log.md` when you return. No special signal needed — completing your agent run IS the signal.
 
 ## Analyst Step 5: Mid-Loop Feedback Injection
 
@@ -112,8 +123,8 @@ When the human provides feedback while the build loop is running:
 
 1. Classify the feedback (Step 3)
 2. If **blocking** priority:
-   - Write to `feedback-log.md` immediately
-   - Signal the Orchestrator to pause and incorporate before the next agent launch
+   - Write to `feedback-log.md` immediately with `Priority: blocking`
+   - The Orchestrator checks `feedback-log.md` at every handoff and will pause for blocking items
 3. If **important** but not blocking:
    - Write to `feedback-log.md`
    - Orchestrator picks it up at the next natural handoff (between Builder/Tester/Inspector cycles)

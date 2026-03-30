@@ -27,8 +27,9 @@ Read ALL playbook entries provided in your prompt. Apply every relevant one.
 
 When you solve a new blocker, add it to the appropriate playbook:
 ```bash
-# Find the right playbook gist ID from playbooks.json, then:
-gh gist edit <gist-id> -a <category>-<short-name>.md
+# Write entry to temp file, then push to the playbook gist from playbooks.json:
+gh api --method PATCH /gists/<gist-id> \
+  -f "files[<category>-<short-name>.md][content]=$(cat /tmp/<category>-<short-name>.md)"
 ```
 
 ## Builder Step 0.5: Copy Template Files (macOS)

@@ -40,17 +40,28 @@ The **Orchestrator** manages handoffs and commits only when the Inspector approv
 
 Spec source: $ARGUMENTS (defaults to `spec.md` in current directory)
 
-**Gist support:** If `$ARGUMENTS` is a GitHub gist URL (e.g., `https://gist.github.com/user/abc123` or a gist ID), the spec lives in the gist instead of a local file:
+**Gist support:** If `$ARGUMENTS` is a GitHub gist URL or gist ID, the spec lives in the gist instead of a local file.
+
+**Detection rules:**
+- Starts with `https://gist.github.com/` → gist URL. Extract gist ID from the last path segment.
+- Matches `/^[a-f0-9]{20,}$/` → bare gist ID.
+- Otherwise → local file path.
 
 ```bash
 # Read spec from gist
 gh gist view <gist-id> -f spec.md
 
-# Update spec in gist (Analyst only)
-gh gist edit <gist-id> -f spec.md
+# Update spec in gist (Analyst only) — non-interactive
+gh api --method PATCH /gists/<gist-id> \
+  -f "files[spec.md][content]=$(cat /tmp/spec-updated.md)"
+
+# If gist has no file named spec.md, list files first:
+gh gist view <gist-id> --files
 ```
 
-The Orchestrator detects the source type at startup and stores it in `journey-loop-state.md` as `Spec source: gist:<gist-id>` or `Spec source: file:<path>`. All agents read the spec through a consistent method — the Orchestrator fetches the latest content and includes it in each agent's prompt. The Analyst uses `gh gist edit` to update a gist-based spec instead of writing to a local file.
+**Error handling:** If `gh gist view` fails, print the error, ask the user to verify the gist URL and run `gh auth status`, and do not proceed until the spec is readable.
+
+The Orchestrator detects the source type at startup and stores it in `journey-loop-state.md` as `Spec source: gist:<gist-id>` or `Spec source: file:<path>`. All agents read the spec through a consistent method — the Orchestrator fetches the latest content and includes it in each agent's prompt. The Analyst writes spec updates to a temp file then pushes via `gh api`.
 
 ---
 
@@ -75,11 +86,7 @@ Playbooks are shared, platform-specific knowledge bases stored as GitHub gists. 
 
 ### Registered Playbooks
 
-| Platform | Gist ID | Description |
-|----------|---------|-------------|
-| macOS | `84a5c108d5742c850704a5088a3f4cbf` | Xcode, SwiftUI, XCUITest, codesign, ScreenCaptureKit |
-
-Playbook registry is stored in `playbooks.json` at the repo root:
+See `playbooks.json` at the repo root for the current list. Example:
 
 ```json
 {
@@ -102,8 +109,9 @@ gh gist view <gist-id> --files
 # Read a specific entry
 gh gist view <gist-id> -f <filename>
 
-# Add an entry to an existing playbook
-gh gist edit <gist-id> -a <category>-<short-name>.md
+# Add an entry to an existing playbook (write file locally, then push)
+gh api --method PATCH /gists/<gist-id> \
+  -f "files[<category>-<short-name>.md][content]=$(cat /tmp/<category>-<short-name>.md)"
 ```
 
 ### Creating a New Playbook
@@ -111,12 +119,13 @@ gh gist edit <gist-id> -a <category>-<short-name>.md
 When the user wants to add a new playbook (e.g., "create a web playbook"):
 
 1. **Gather content** — ask the user what entries to include, or accept content they provide
-2. **Create the gist** — write each entry as a separate `.md` file:
+2. **Write entry files** to `/tmp/` using kebab-case names: `{category}-{short-name}.md` (e.g., `networking-cors-preflight.md`, `testing-playwright-selectors.md`)
+3. **Create the gist**:
    ```bash
-   # Create a new playbook gist with initial entries
-   gh gist create --public -d "Autocraft playbook: {platform}" <file1>.md <file2>.md ...
+   gh gist create --public -d "Autocraft playbook: {platform}" /tmp/entry1.md /tmp/entry2.md ...
+   # Capture the gist ID from the output URL (last path segment)
    ```
-3. **Register the playbook** — add it to `playbooks.json`:
+4. **Register the playbook** — add it to `playbooks.json` (the single source of truth):
    ```json
    {
      "platform": "{platform-key}",
@@ -124,10 +133,11 @@ When the user wants to add a new playbook (e.g., "create a web playbook"):
      "description": "{what this playbook covers}"
    }
    ```
-4. **Update SKILL.md** — add the new row to the Registered Playbooks table above
+   Platform keys: lowercase, no spaces (e.g., `macos`, `web`, `ios`, `android`, `go`, `python`)
 5. **Commit** — commit `playbooks.json` so the playbook is available in future sessions
+6. **Clean up** temp files in `/tmp/`
 
-Each entry in a playbook should follow this format:
+Each entry in a playbook should follow this format (2-5 sentences per section minimum, Solution must include runnable code or exact commands):
 
 ```markdown
 # {Short title}
@@ -159,7 +169,7 @@ You are the skeptical project manager. You don't write code. You don't review sc
 ## Step 0: Launch Analyst (first iteration only)
 
 If this is the first iteration and `spec.md` does not exist or the human has new input:
-1. Launch the **Analyst** (foreground) with the human's request — include [analyst.md](analyst.md)
+1. Launch the **Analyst** (foreground) with [analyst.md](analyst.md) contents and the human's request
 2. The Analyst will gather requirements, write/update `spec.md`, and confirm with the human
 3. Only proceed to Step 0.5 after the Analyst signals that the spec is confirmed
 
