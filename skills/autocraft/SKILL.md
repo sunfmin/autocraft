@@ -131,14 +131,18 @@ gh gist view <gist-id> --files
 # Read a specific entry
 gh gist view <gist-id> -f <filename>
 
-# Add an entry to an existing playbook (write file locally, then push)
+# Add or update an entry (write file locally, then push)
 gh api --method PATCH /gists/<gist-id> \
-  -f "files[<category>-<short-name>.md][content]=$(cat /tmp/<category>-<short-name>.md)"
+  -f "files[<filename>.md][content]=$(cat /tmp/<filename>.md)"
+
+# Delete an entry
+gh api --method PATCH /gists/<gist-id> \
+  -f "files[<filename>.md]="
 ```
 
-### Creating a New Playbook
+### Creating or Updating a Playbook
 
-When the user wants to add a new playbook (e.g., "create a web playbook"):
+**Create a new playbook** (e.g., "create a web playbook"):
 
 1. **Gather content** — ask the user what entries to include, or accept content they provide
 2. **Write entry files** to `/tmp/` using kebab-case names: `{category}-{short-name}.md` (e.g., `networking-cors-preflight.md`, `testing-playwright-selectors.md`)
@@ -157,6 +161,22 @@ When the user wants to add a new playbook (e.g., "create a web playbook"):
      -f "files[playbooks.json][content]=$(cat /tmp/playbooks.json)"
    ```
    Platform keys: lowercase, no spaces (e.g., `macos`, `web`, `ios`, `android`, `go`, `python`)
+5. **Clean up** temp files in `/tmp/`
+
+**Update an existing playbook** (e.g., "add a CORS entry to the web playbook", "update the builder macOS guide"):
+
+1. **Resolve the gist ID** — look up the platform in the registry to get its `gist_id`
+2. **Fetch current content** (if updating an existing entry):
+   ```bash
+   gh gist view <gist-id> -f <filename>.md > /tmp/<filename>.md
+   ```
+3. **Write or edit** the entry file in `/tmp/`
+4. **Push** — the same PATCH command adds new files or overwrites existing ones:
+   ```bash
+   gh api --method PATCH /gists/<gist-id> \
+     -f "files[<filename>.md][content]=$(cat /tmp/<filename>.md)"
+   ```
+   Multiple files can be pushed in a single PATCH by adding more `-f` flags.
 5. **Clean up** temp files in `/tmp/`
 
 Each entry in a playbook should follow this format (2-5 sentences per section minimum, Solution must include runnable code or exact commands):
