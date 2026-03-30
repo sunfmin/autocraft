@@ -27,7 +27,7 @@ Read ALL playbook entries provided in your prompt. Apply every relevant one.
 
 When you solve a new blocker, add it to the appropriate playbook:
 ```bash
-# Write entry to temp file, then push to the playbook gist from playbooks.json:
+# Write entry to temp file, then push to the playbook gist (ID from registry gist bca7073d567ca8b7ba79ff4bad5fb2c5):
 gh api --method PATCH /gists/<gist-id> \
   -f "files[<category>-<short-name>.md][content]=$(cat /tmp/<category>-<short-name>.md)"
 ```

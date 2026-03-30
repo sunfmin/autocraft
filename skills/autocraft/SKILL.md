@@ -84,10 +84,20 @@ The Orchestrator detects the source type at startup and stores it in `journey-lo
 
 Playbooks are shared, platform-specific knowledge bases stored as GitHub gists. Each playbook targets a specific platform or domain. Agents load the relevant playbook(s) at the start of every iteration.
 
-### Registered Playbooks
+### Playbook Registry
 
-See `playbooks.json` at the repo root for the current list. Example:
+The registry is a gist: `bca7073d567ca8b7ba79ff4bad5fb2c5`
 
+```bash
+# Read the registry
+gh gist view bca7073d567ca8b7ba79ff4bad5fb2c5 -f playbooks.json
+
+# Update the registry (non-interactive)
+gh api --method PATCH /gists/bca7073d567ca8b7ba79ff4bad5fb2c5 \
+  -f "files[playbooks.json][content]=$(cat /tmp/playbooks.json)"
+```
+
+Registry format:
 ```json
 {
   "playbooks": [
@@ -125,17 +135,17 @@ When the user wants to add a new playbook (e.g., "create a web playbook"):
    gh gist create --public -d "Autocraft playbook: {platform}" /tmp/entry1.md /tmp/entry2.md ...
    # Capture the gist ID from the output URL (last path segment)
    ```
-4. **Register the playbook** — add it to `playbooks.json` (the single source of truth):
-   ```json
-   {
-     "platform": "{platform-key}",
-     "gist_id": "{new-gist-id}",
-     "description": "{what this playbook covers}"
-   }
+4. **Register the playbook** — fetch the registry gist, add the new entry, push back:
+   ```bash
+   # Fetch current registry
+   gh gist view bca7073d567ca8b7ba79ff4bad5fb2c5 -f playbooks.json > /tmp/playbooks.json
+   # Add new entry to the playbooks array (use jq or manual edit)
+   # Push updated registry
+   gh api --method PATCH /gists/bca7073d567ca8b7ba79ff4bad5fb2c5 \
+     -f "files[playbooks.json][content]=$(cat /tmp/playbooks.json)"
    ```
    Platform keys: lowercase, no spaces (e.g., `macos`, `web`, `ios`, `android`, `go`, `python`)
-5. **Commit** — commit `playbooks.json` so the playbook is available in future sessions
-6. **Clean up** temp files in `/tmp/`
+5. **Clean up** temp files in `/tmp/`
 
 Each entry in a playbook should follow this format (2-5 sentences per section minimum, Solution must include runnable code or exact commands):
 
@@ -154,9 +164,11 @@ Each entry in a playbook should follow this format (2-5 sentences per section mi
 
 ### Selecting Playbooks for a Project
 
-The Orchestrator reads `playbooks.json` at startup and loads ALL registered playbooks. If the project only uses one platform, only that playbook's entries are included in agent prompts.
+The Orchestrator fetches the registry gist (`bca7073d567ca8b7ba79ff4bad5fb2c5`) at startup and loads ALL registered playbooks. If the project only uses one platform, only that playbook's entries are included in agent prompts.
 
-If `playbooks.json` doesn't exist yet, fall back to the macOS playbook gist `84a5c108d5742c850704a5088a3f4cbf` for backward compatibility.
+**Error handling:** If the registry gist fetch fails (network, auth), warn the user and proceed without playbooks. Do not abort the build loop.
+
+**Ownership:** Only the gist owner can update the registry. If you need to register a new playbook but don't own the registry gist, fork it: `gh gist fork bca7073d567ca8b7ba79ff4bad5fb2c5`, then use your fork's ID going forward.
 
 ---
 
@@ -177,7 +189,7 @@ If the human provides feedback mid-loop, re-launch the Analyst to classify and r
 
 ## Step 0.5: Load Playbooks (every iteration)
 
-Read `playbooks.json` (or fall back to the macOS gist). For each registered playbook, fetch and read ALL files. Include their full content in the Builder's and Tester's prompts.
+Fetch the playbook registry from gist `bca7073d567ca8b7ba79ff4bad5fb2c5`. For each registered playbook, fetch and read ALL files from its gist. Include their full content in the Builder's and Tester's prompts.
 
 ## Step 1: Build Acceptance Criteria Master List
 
