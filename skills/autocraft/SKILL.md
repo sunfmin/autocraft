@@ -144,8 +144,9 @@ Phase 3: [state after action Y] — depends on Phase 2
 - PREREQUISITE: {state the app must be in — reference the Phase that establishes it}
 - ACTION: {exact UI action — e.g., "click quickAction_Summarize"}
 - ASSERT: {exact observable result — e.g., "terminalOutputArea contains 'Summarize'"}
+- ASSERT_CONTAINS: {specific content that PROVES the action completed — e.g., "multi-line output", "contains 'Summary:'". NEVER just "changed" or "not empty"}
 - ASSERT_TYPE: behavioral | state | existence
-  <!-- behavioral = action changes observable state (REQUIRED for action-verbs like "sends", "opens", "seeks")
+  <!-- behavioral = action produces the EXPECTED result (REQUIRED for action-verbs like "sends", "opens", "seeks")
        state = element property matches expected value (OK for "disabled when X")
        existence = element is present (ONLY OK for "visible" criteria) -->
 - SCREENSHOT: {name}
@@ -156,6 +157,7 @@ Phase 3: [state after action Y] — depends on Phase 2
 1. If the criterion's verb describes an **action** ("sends", "opens", "auto-cds", "seeks"), the ASSERT_TYPE MUST be `behavioral` — the test must verify an observable change, not just element existence
 2. Every criterion with a prerequisite must reference the Phase that establishes it. If that Phase fails, the test must XCTFail with the FAIL_IF_BLOCKED message
 3. The Orchestrator must think adversarially: "If the Builder left the handler empty but kept the UI element, would this assertion catch it?" If not, strengthen the assertion.
+4. Every `behavioral` criterion MUST have an ASSERT_CONTAINS that would FAIL if the action produced an error, a prompt, or any unintended intermediate state instead of the expected result. "Output changed" or "output is not empty" are NEVER sufficient for ASSERT_CONTAINS.
 
 ## Step 3c: Launch Tester Agent (background)
 
@@ -203,6 +205,7 @@ For each criterion in the contract:
 2. **ASSERT present?** — grep for the assertion. If the contract says `ASSERT_TYPE: behavioral` and the test only contains `.exists` for that element, → FAIL
 3. **No silent skips?** — grep for `if.*{identifier}.*\.exists.*{` where `{identifier}` is from the contract. Any match = the Tester wrapped a contract assertion in a conditional guard → FAIL
 4. **FAIL_IF_BLOCKED present?** — for criteria with prerequisites, grep for the XCTFail message from the contract. If missing, the Tester will silently skip blocked criteria → FAIL
+5. **ASSERT_CONTAINS enforced?** — for every `behavioral` criterion, grep the test file for a content-matching assertion (`contains`, `hasPrefix`, `count >`, `components(separatedBy:)`) near the action. If the test only uses `XCTAssertNotEqual` without a content check → FAIL. A "changed" assertion without a "contains expected content" assertion is incomplete.
 
 ```bash
 TEST_FILE="PercevUITests/<JourneyTestFile>.swift"
@@ -433,7 +436,7 @@ For each criterion in the contract:
 2. **Perform the ACTION** exactly as the contract specifies. Click the element, type the text, toggle the control.
 
 3. **Assert the result** using the contract's ASSERT_TYPE:
-   - `behavioral`: verify that something **changed** after the action — new content appeared, a value changed, a view transitioned. Just checking `.exists` is NOT behavioral.
+   - `behavioral`: verify that the action **produced the expected result** from the contract's ASSERT_CONTAINS. Two checks required: (1) the state changed, AND (2) the new state contains the expected content. `XCTAssertNotEqual(before, after)` alone is NOT sufficient — it passes when the output is an error or prompt. Always pair it with a content check using the contract's ASSERT_CONTAINS value.
    - `state`: verify an element's property matches an expected value (e.g., `isEnabled == false`)
    - `existence`: verify the element is present (only for "visible" criteria)
 
@@ -443,20 +446,27 @@ For each criterion in the contract:
 // Contract says:
 // AC2: ACTION: click quickAction_Summarize
 //      ASSERT: terminal output changes after click
+//      ASSERT_CONTAINS: multi-line output (not a single-line prompt or dialog)
 //      ASSERT_TYPE: behavioral
 
-// WRONG — existence is not behavioral:
+// WRONG — existence only:
 // XCTAssertTrue(summarizeBtn.exists)
 
-// RIGHT — behavioral verification:
+// WRONG — "changed" but to what? Passes for errors and prompts too:
+// XCTAssertNotEqual(outputBefore, outputAfter)
+
+// RIGHT — verify change AND expected content:
 let outputBefore = (app.descendants(matching: .any)["terminalOutputArea"]
     .value as? String) ?? ""
 summarizeBtn.click()
-_ = app.staticTexts["nonexistent"].waitForExistence(timeout: 3) // brief wait
+_ = app.staticTexts["nonexistent"].waitForExistence(timeout: 3)
 let outputAfter = (app.descendants(matching: .any)["terminalOutputArea"]
     .value as? String) ?? ""
 XCTAssertNotEqual(outputBefore, outputAfter,
-    "AC2: Clicking Summarize must change terminal output (sends a prompt)")
+    "AC2: Clicking Summarize must change terminal output")
+// ASSERT_CONTAINS: verify the result is the expected output, not an error/prompt
+XCTAssertTrue(outputAfter.contains("\n") || outputAfter.count > outputBefore.count + 50,
+    "AC2: Output must be multi-line/substantial (not a one-line prompt or error)")
 snap("042-summarize-prompt-sent")
 ```
 
@@ -603,9 +613,9 @@ For every acceptance criterion mapped to this journey:
 Build per-criterion coverage table.
 
 ### 2d. Assertion Honesty
-For each test assertion, ask: **"If I emptied this feature's action handler — kept the UI element but made it do nothing when clicked — would this test still pass?"**
-- Yes → the test proves the UI exists, not that the feature works. Flag it.
-- No → the test proves the feature works. This is what we want.
+For each test assertion, ask TWO questions:
+1. **"If I emptied this handler, would this test still pass?"** — Yes → flag it, the test only proves the UI exists.
+2. **"Does the test VERIFY completion, or just DETECT change?"** — Read the assertion code. If it's `NotEqual(before, after)` without a content check (`contains`, `hasPrefix`, `count >`), the test would pass even if the output were an error message, a login screen, or a permission prompt. Flag it: "test detects change but does not verify expected content per ASSERT_CONTAINS."
 
 ## Inspector Phase 3: Verdict
 
