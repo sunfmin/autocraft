@@ -1,0 +1,9 @@
+{
+  "playbooks": [
+    {
+      "platform": "macos",
+      "gist_id": "84a5c108d5742c850704a5088a3f4cbf",
+      "description": "Xcode, SwiftUI, XCUITest, codesign, ScreenCaptureKit"
+    }
+  ]
+}

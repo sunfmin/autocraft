@@ -69,15 +69,84 @@ The Orchestrator detects the source type at startup and stores it in `journey-lo
 
 ---
 
-## Pitfalls Gist
+## Playbooks
 
-Shared platform-specific solutions: gist `84a5c108d5742c850704a5088a3f4cbf`
+Playbooks are shared, platform-specific knowledge bases stored as GitHub gists. Each playbook targets a specific platform or domain. Agents load the relevant playbook(s) at the start of every iteration.
+
+### Registered Playbooks
+
+| Platform | Gist ID | Description |
+|----------|---------|-------------|
+| macOS | `84a5c108d5742c850704a5088a3f4cbf` | Xcode, SwiftUI, XCUITest, codesign, ScreenCaptureKit |
+
+Playbook registry is stored in `playbooks.json` at the repo root:
+
+```json
+{
+  "playbooks": [
+    {
+      "platform": "macos",
+      "gist_id": "84a5c108d5742c850704a5088a3f4cbf",
+      "description": "Xcode, SwiftUI, XCUITest, codesign, ScreenCaptureKit"
+    }
+  ]
+}
+```
+
+### Playbook Commands
 
 ```bash
-gh gist view 84a5c108d5742c850704a5088a3f4cbf --files          # list
-gh gist view 84a5c108d5742c850704a5088a3f4cbf -f <filename>   # read
-gh gist edit 84a5c108d5742c850704a5088a3f4cbf -a <file>.md    # add
+# List files in a playbook
+gh gist view <gist-id> --files
+
+# Read a specific entry
+gh gist view <gist-id> -f <filename>
+
+# Add an entry to an existing playbook
+gh gist edit <gist-id> -a <category>-<short-name>.md
 ```
+
+### Creating a New Playbook
+
+When the user wants to add a new playbook (e.g., "create a web playbook"):
+
+1. **Gather content** — ask the user what entries to include, or accept content they provide
+2. **Create the gist** — write each entry as a separate `.md` file:
+   ```bash
+   # Create a new playbook gist with initial entries
+   gh gist create --public -d "Autocraft playbook: {platform}" <file1>.md <file2>.md ...
+   ```
+3. **Register the playbook** — add it to `playbooks.json`:
+   ```json
+   {
+     "platform": "{platform-key}",
+     "gist_id": "{new-gist-id}",
+     "description": "{what this playbook covers}"
+   }
+   ```
+4. **Update SKILL.md** — add the new row to the Registered Playbooks table above
+5. **Commit** — commit `playbooks.json` so the playbook is available in future sessions
+
+Each entry in a playbook should follow this format:
+
+```markdown
+# {Short title}
+
+## Problem
+{What goes wrong and when}
+
+## Solution
+{Exact steps, commands, or code to fix it}
+
+## Why
+{Root cause — so agents can recognize variants of the same problem}
+```
+
+### Selecting Playbooks for a Project
+
+The Orchestrator reads `playbooks.json` at startup and loads ALL registered playbooks. If the project only uses one platform, only that playbook's entries are included in agent prompts.
+
+If `playbooks.json` doesn't exist yet, fall back to the macOS playbook gist `84a5c108d5742c850704a5088a3f4cbf` for backward compatibility.
 
 ---
 
@@ -233,9 +302,9 @@ If this is the first iteration and `spec.md` does not exist or the human has new
 
 If the human provides feedback mid-loop, re-launch the Analyst to classify and route it (see Analyst Step 5). The Analyst writes to `feedback-log.md`; the Orchestrator picks up routed items at the next handoff.
 
-## Step 0.5: Load Pitfalls (every iteration)
+## Step 0.5: Load Playbooks (every iteration)
 
-Fetch and read ALL pitfall files from the gist. Include their full content in the Builder's prompt.
+Read `playbooks.json` (or fall back to the macOS gist). For each registered playbook, fetch and read ALL files. Include their full content in the Builder's and Tester's prompts.
 
 ## Step 1: Build Acceptance Criteria Master List
 
@@ -285,7 +354,7 @@ If not CLEAN: include in Builder's directive as **first priority to fix**.
 Spawn a background Agent with:
 1. The Builder Instructions (Part 2 below)
 2. Full `AGENTS.md` content (if exists)
-3. Full pitfall file contents
+3. Full playbook contents (all registered playbooks)
 4. Current `journey-state.md`
 5. Directive: which journey to build/extend, plus any simulation fixes from Step 2
 6. Any **Builder-routed feedback** from `feedback-log.md` (unresolved items where `Routed to: Builder`)
@@ -336,7 +405,7 @@ Phase 3: [state after action Y] — depends on Phase 2
 After the test contract is written, spawn a background Tester Agent with:
 1. The Tester Instructions (Part 2b below)
 2. Full `AGENTS.md` content (if exists)
-3. Full pitfall file contents
+3. Full playbook contents (all registered playbooks)
 4. The spec file path
 5. **The test contract** (`journeys/{NNN}-{name}/test-contract.md`) — the Tester implements this, does not redefine it
 6. The Builder's report (accessibility identifiers, testability notes)
@@ -471,13 +540,14 @@ You are a craftsman engineer. You build real features with real dependencies. Yo
 - Verify output artifacts are non-empty after implementation
 - Call `/attack-blocker` when blocked by permissions/hardware (never stub)
 
-## Builder Step 0: Load Pitfalls
+## Builder Step 0: Load Playbooks
 
-Read ALL pitfall files provided in your prompt. Apply every relevant one.
+Read ALL playbook entries provided in your prompt. Apply every relevant one.
 
-When you solve a new blocker, add it to the gist:
+When you solve a new blocker, add it to the appropriate playbook:
 ```bash
-gh gist edit 84a5c108d5742c850704a5088a3f4cbf -a <category>-<short-name>.md
+# Find the right playbook gist ID from playbooks.json, then:
+gh gist edit <gist-id> -a <category>-<short-name>.md
 ```
 
 ## Builder Step 0.5: Copy Template Files (macOS)
@@ -578,9 +648,9 @@ Your only creative freedom is in the _how_ — the Swift code that navigates the
 - Screenshot after every contract-specified screenshot point via `snap()`
 - Set journey status to `needs-review` when done
 
-## Tester Step 0: Load Pitfalls
+## Tester Step 0: Load Playbooks
 
-Read ALL pitfall files provided in your prompt. Apply every relevant one.
+Read ALL playbook entries provided in your prompt. Apply every relevant one.
 
 ## Tester Step 0.5: Copy Template Files (macOS)
 
@@ -806,7 +876,7 @@ Write verdict to `journey-refinement-log.md` (append, never overwrite).
 
 For each failure, diagnose the instruction gap using 5 Whys.
 
-- Platform-specific fix → add pitfall to gist
+- Platform-specific fix → add entry to the appropriate playbook gist
 - Project-specific fix → edit `AGENTS.md` at repo root (surgical edits, mandatory language)
 
 Anti-bloat: every sentence must cause the agent to DO something. No net growth > 20 lines without cutting elsewhere.
@@ -846,5 +916,5 @@ final class MyJourneyTests: JourneyTestCase {
 - **Stall detection:** If Builder or Tester produces no changes for 2 consecutive iterations, log and re-launch with Inspector's last failure list.
 - **Only the Analyst can modify the spec** (local `spec.md` or gist) — read-only for all other agents. The Analyst must confirm changes with the human before writing.
 - **feedback-log.md is append-only** — entries are never deleted, only marked resolved.
-- **Pitfalls gist is append-only.**
+- **Playbook gists are append-only.** New entries can be added; existing entries should not be deleted.
 - Recurring tasks auto-expire after 7 days if run via `/loop`.
