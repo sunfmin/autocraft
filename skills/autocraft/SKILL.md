@@ -248,6 +248,7 @@ Wait for Inspector verdict.
    - Production code issue (feature doesn't work, stub, missing implementation) → re-launch **Builder**
    - Test issue (existence-only assertion, missing interaction, wrong verification) → **update the test contract** to strengthen the failing assertions, then re-launch **Tester** with the updated contract + Inspector's failure list
    - Both → re-launch Builder first, then update contract + re-launch Tester
+   - Visual/UX issue (garbled rendering, incomplete flow, broken layout visible in screenshots) → re-launch **Builder** with the specific screenshot and failure description. The Builder must fix the root cause (e.g., use a proper rendering library, pre-configure interactive tools, handle prompts automatically).
 4. When updating the contract after Inspector rejection:
    - For each failed criterion, tighten the ASSERT to make the failure structurally impossible (e.g., if the Tester used `.exists` where the contract said `behavioral`, add an explicit example assertion to the contract)
    - Add any missing FAIL_IF_BLOCKED messages the Inspector identified
@@ -586,10 +587,12 @@ Only after ALL scans pass:
 Run the build. Run the journey's tests. Record pass/fail and timing.
 
 ### 2b. Screenshot Review
-Read ALL screenshots in `journeys/{NNN}/screenshots/`. Apply the `/frontend-design` skill's design principles (loaded by the Orchestrator — see below) to evaluate each screenshot:
+Read ALL screenshots in `journeys/{NNN}/screenshots/`. For each screenshot, evaluate:
+- **Visual sanity — would a real user consider this broken?** Look for: garbled or raw escape codes (ANSI sequences like `[0m`, `[27m`), placeholder/lorem-ipsum content, overlapping or clipped elements, unreadable text, blank areas where content should be, corrupted rendering. If ANY screenshot would make a user say "this is broken" → **FAIL the entire journey**, regardless of whether all criteria technically pass.
+- **Incomplete flows — is the feature stuck waiting for input?** Look for: confirmation dialogs, permission prompts, error messages, loading spinners, CLI tools asking questions (e.g., "Enter to confirm", "Y/n"), login screens. If a screenshot shows a feature that started but didn't finish because it's blocked on user interaction → **FAIL**. The Builder must handle the interaction automatically (pre-configure, auto-confirm, or bypass the prompt).
 - Does it show a feature WORKING (real content) or just EXISTING (empty)?
 - App-only? (No desktop, dock, other windows)
-- Design quality: typography, spacing, alignment, color, hierarchy?
+- Design quality per `/frontend-design` principles: typography, spacing, alignment, color, hierarchy?
 
 ### 2c. Spec Coverage Check
 For every acceptance criterion mapped to this journey:
