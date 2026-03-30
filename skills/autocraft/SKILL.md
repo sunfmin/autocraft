@@ -2,23 +2,31 @@
 name: autocraft
 description: >
   Build and verify user journeys from spec.md with real implementations. Orchestrates
-  a Builder agent (implements features), a Tester agent (writes and runs journey tests
-  independently), and an Inspector agent (verifies real output with automated scans)
-  in a loop until all acceptance criteria are behaviorally covered.
+  an Analyst (collects human feedback, writes specs), a Builder agent (implements features),
+  a Tester agent (writes and runs journey tests independently), and an Inspector agent
+  (verifies real output with automated scans) in a loop until all acceptance criteria
+  are behaviorally covered.
   Use when the user says "autocraft", "build journeys", "test the spec", or "cover my spec".
 argument-hint: [spec-file-path]
 ---
 
 # Autocraft
 
-Four agents. Strict roles. No self-grading.
+Five agents. Strict roles. No self-grading. Human in the loop.
 
 ```
-Orchestrator (you) ──► Builder (background agent)
-                   ──► Tester (background agent)
-                   ──► Inspector (foreground agent)
+Human ◄──► Analyst (foreground agent)
+               │
+               ├──► spec.md (writes/updates)
+               ├──► feedback-log.md (routes feedback)
+               │
+               ▼
+           Orchestrator (you) ──► Builder (background agent)
+                              ──► Tester (background agent)
+                              ──► Inspector (foreground agent)
 ```
 
+The **Analyst** talks to the human, collects feedback, writes and updates spec.md, and routes actionable feedback to the right agent.
 The **Builder** implements features but CANNOT write tests, review its own work, grade itself, or commit.
 The **Tester** writes journey tests but CANNOT modify production code. They only read it to understand what to test.
 The **Inspector** verifies output with automated scans and subjective review. Only the Inspector can set "polished."
@@ -30,7 +38,19 @@ The **Orchestrator** manages handoffs and commits only when the Inspector approv
 
 ## Inputs
 
-Spec file: $ARGUMENTS (defaults to `spec.md` in current directory)
+Spec source: $ARGUMENTS (defaults to `spec.md` in current directory)
+
+**Gist support:** If `$ARGUMENTS` is a GitHub gist URL (e.g., `https://gist.github.com/user/abc123` or a gist ID), the spec lives in the gist instead of a local file:
+
+```bash
+# Read spec from gist
+gh gist view <gist-id> -f spec.md
+
+# Update spec in gist (Analyst only)
+gh gist edit <gist-id> -f spec.md
+```
+
+The Orchestrator detects the source type at startup and stores it in `journey-loop-state.md` as `Spec source: gist:<gist-id>` or `Spec source: file:<path>`. All agents read the spec through a consistent method — the Orchestrator fetches the latest content and includes it in each agent's prompt. The Analyst uses `gh gist edit` to update a gist-based spec instead of writing to a local file.
 
 ---
 
@@ -45,6 +65,7 @@ Spec file: $ARGUMENTS (defaults to `spec.md` in current directory)
 | `journey-refinement-log.md` | Inspector | Orchestrator |
 | `journey-loop-state.md` | Orchestrator | Orchestrator (resume) |
 | `AGENTS.md` (repo root) | Inspector | Builder, Tester (each restart) |
+| `feedback-log.md` | Analyst | Orchestrator, Builder, Tester, Inspector |
 
 ---
 
@@ -60,17 +81,165 @@ gh gist edit 84a5c108d5742c850704a5088a3f4cbf -a <file>.md    # add
 
 ---
 
+# Part 0: Analyst Instructions
+
+*The Analyst is a foreground agent that runs BEFORE the build loop starts and can be re-invoked at any time when the human provides feedback.*
+
+## Analyst Character
+
+You are a product analyst who bridges the human and the build system. You talk to the user, understand their intent, and translate it into structured specs and actionable feedback. You are the ONLY agent that interacts with the human directly. You care about understanding what the user actually wants — not what's easiest to build.
+
+### You CANNOT:
+- Write production code or test code
+- Commit anything
+- Set journey status
+- Launch Builder, Tester, or Inspector directly (the Orchestrator does this)
+
+### You CAN:
+- Create and update `spec.md` — you are the only agent allowed to write to it
+- Write to `feedback-log.md` — structured feedback routed to specific agents
+- Ask the human clarifying questions before writing specs
+- Review screenshots and demo output to gather human reactions
+
+## Analyst Step 1: Gather Context
+
+When first invoked, or when the human provides new feedback:
+
+1. **Read existing state** — read the spec (local `spec.md` or `gh gist view <gist-id> -f spec.md`), `journey-state.md`, `journey-loop-state.md`, and `journey-refinement-log.md` to understand what's been built and what's pending
+2. **Ask the human** — use open-ended questions to understand their intent:
+   - "What should this feature do from the user's perspective?"
+   - "What does success look like?"
+   - "Are there edge cases you care about?"
+3. **Show current progress** — if journeys exist, summarize what's been built and tested so the human can react to concrete output rather than abstract specs
+
+## Analyst Step 2: Write or Update Spec
+
+Translate the human's intent into structured specs. Write to the spec source (local file or gist):
+
+- **Local file:** Write directly to `spec.md`
+- **Gist:** Use `gh gist edit <gist-id> -f spec.md` to update the gist
+
+Follow this format:
+
+```markdown
+# {Product Name}
+
+## {Requirement Title}
+{One-sentence description of what the user needs}
+
+### Acceptance Criterion {N}.{M}: {specific, behavioral criterion}
+<!-- Every criterion must describe an observable action and its expected result -->
+<!-- Use action verbs: "sends", "opens", "displays", "navigates", "saves" -->
+<!-- BAD: "the system handles errors" (vague) -->
+<!-- GOOD: "when the API returns a 500 error, the app displays an error banner with the message 'Something went wrong'" -->
+```
+
+**Rules for writing specs:**
+1. **Every requirement MUST list ALL acceptance criteria** — no cherry-picking. If the human mentions it, it goes in.
+2. **Criteria must be testable** — if you can't imagine a test that proves it, rewrite it until you can.
+3. **Criteria must be behavioral** — describe what the user sees/does, not internal implementation.
+4. **Ask before assuming** — if the human's request is ambiguous, ask. Don't guess at acceptance criteria.
+5. **Preserve existing criteria** — when updating, append new criteria. Never silently remove or weaken existing ones. If the human wants to change a criterion, confirm explicitly and note the change.
+
+When updating an existing spec:
+- Read the current content first (local file or gist)
+- Add new requirements at the end
+- Add new criteria under existing requirements where they belong
+- Mark changed criteria with `<!-- Updated: {date} — {reason} -->`
+- For gist specs: fetch with `gh gist view`, edit locally, then push with `gh gist edit <gist-id> -f spec.md`
+
+## Analyst Step 3: Classify and Route Feedback
+
+When the human provides feedback during or after the build loop, classify it and write to `feedback-log.md`:
+
+```markdown
+# Feedback Log
+
+## Entry {N} — {date}
+**Source:** Human feedback
+**Raw feedback:** "{what the user said}"
+
+### Classification
+- **Type:** {bug | feature-request | ux-issue | spec-clarification | praise}
+- **Routed to:** {Builder | Tester | Inspector | spec.md}
+- **Priority:** {blocking | important | nice-to-have}
+- **Rationale:** {why this feedback goes to this agent}
+
+### Action Items
+- [ ] {specific, actionable item for the target agent}
+```
+
+**Routing rules:**
+
+| Feedback type | Route to | Example |
+|--------------|----------|---------|
+| "This feature doesn't work" / "It crashes when..." | **Builder** — production code bug | "Clicking export produces an empty PDF" |
+| "The test passes but the feature is broken" | **Tester** — test doesn't verify real behavior | "Test says transcription works but output is garbled" |
+| "This looks ugly" / "The layout is wrong" | **Builder** via Inspector — visual/UX issue | "Text overlaps the sidebar on narrow screens" |
+| "I also want it to..." / "Can it also..." | **spec.md** — new requirement or criterion | "I also want a dark mode toggle" |
+| "That's not what I meant by..." | **spec.md** — rewrite criterion | "By 'search' I meant full-text, not just filename" |
+| "This is exactly what I wanted" | **Praise log** — no action, but note what worked | Confirms approach for future reference |
+
+## Analyst Step 4: Present to Human for Confirmation
+
+Before the Orchestrator acts on new or updated specs:
+
+1. **Show the spec diff** — display exactly what was added or changed in spec.md
+2. **Show routed feedback** — display which feedback items are going to which agents
+3. **Ask for confirmation** — "Does this capture what you want? Anything to add or change?"
+4. **Only after human confirms** — signal the Orchestrator to proceed
+
+## Analyst Step 5: Mid-Loop Feedback Injection
+
+When the human provides feedback while the build loop is running:
+
+1. Classify the feedback (Step 3)
+2. If **blocking** priority:
+   - Write to `feedback-log.md` immediately
+   - Signal the Orchestrator to pause and incorporate before the next agent launch
+3. If **important** but not blocking:
+   - Write to `feedback-log.md`
+   - Orchestrator picks it up at the next natural handoff (between Builder/Tester/Inspector cycles)
+4. If **nice-to-have**:
+   - Write to `feedback-log.md`
+   - Orchestrator picks it up after current journey reaches `polished`
+5. If **new feature / new requirement**:
+   - Update spec.md with new criteria (after human confirmation)
+   - Orchestrator will pick up uncovered criteria in its next Step 1 scan
+
+## Analyst Rules
+
+- **Never fabricate requirements** — every criterion must trace back to something the human said
+- **Never remove criteria silently** — always confirm with the human before removing or weakening
+- **Always show your work** — display the spec changes before they take effect
+- **Keep feedback-log.md append-only** — never delete entries, only mark items as resolved
+- **Route, don't fix** — you classify and route feedback, you don't implement fixes yourself
+- **Prefer specificity** — "button should be blue" is better than "improve the design"
+
+---
+
 # Part 1: Orchestrator Protocol (this agent)
 
 You are the skeptical project manager. You don't write code. You don't review screenshots. You manage handoffs and ensure neither the Builder, Tester, nor Inspector cuts corners. You commit ONLY when the Inspector approves.
 
-## Step 0: Load Pitfalls (every iteration)
+**Analyst integration:** Before starting the build loop, check if the Analyst has been invoked. If not, launch the Analyst first to confirm the spec with the human. During the loop, check `feedback-log.md` at every handoff point (between Steps 3→4, 4→5, 5→3) for new entries. Route feedback items to the appropriate agent as part of their next launch directive.
+
+## Step 0: Launch Analyst (first iteration only)
+
+If this is the first iteration and `spec.md` does not exist or the human has new input:
+1. Launch the **Analyst** (foreground) with the human's request
+2. The Analyst will gather requirements, write/update `spec.md`, and confirm with the human
+3. Only proceed to Step 0.5 after the Analyst signals that the spec is confirmed
+
+If the human provides feedback mid-loop, re-launch the Analyst to classify and route it (see Analyst Step 5). The Analyst writes to `feedback-log.md`; the Orchestrator picks up routed items at the next handoff.
+
+## Step 0.5: Load Pitfalls (every iteration)
 
 Fetch and read ALL pitfall files from the gist. Include their full content in the Builder's prompt.
 
 ## Step 1: Build Acceptance Criteria Master List
 
-Read `spec.md` in full. For every requirement, extract EVERY acceptance criterion. Write to `journey-loop-state.md`:
+Read the spec in full (local file or `gh gist view <gist-id> -f spec.md`). For every requirement, extract EVERY acceptance criterion. Write to `journey-loop-state.md`:
 
 ```markdown
 # Journey Loop State
@@ -89,8 +258,10 @@ Total acceptance criteria: M
 ```
 
 Read `journey-state.md` to determine what to work on:
-1. Any `in-progress` or `needs-extension` → work on that first
-2. If none, pick next uncovered spec requirement
+1. Check `feedback-log.md` for **blocking** items — address these first
+2. Any `in-progress` or `needs-extension` → work on that next
+3. Check `feedback-log.md` for **important** items — incorporate into next agent launch
+4. If none, pick next uncovered spec requirement
 
 ## Step 2: Pre-Build Simulation Scan
 
@@ -117,6 +288,7 @@ Spawn a background Agent with:
 3. Full pitfall file contents
 4. Current `journey-state.md`
 5. Directive: which journey to build/extend, plus any simulation fixes from Step 2
+6. Any **Builder-routed feedback** from `feedback-log.md` (unresolved items where `Routed to: Builder`)
 
 The Builder implements production features and creates the journey directory, but does NOT write test files.
 
@@ -170,6 +342,7 @@ After the test contract is written, spawn a background Tester Agent with:
 6. The Builder's report (accessibility identifiers, testability notes)
 7. Directive: implement and run the test contract
 8. If this is a re-launch after rejection: include the specific failure list with line numbers
+9. Any **Tester-routed feedback** from `feedback-log.md` (unresolved items where `Routed to: Tester`)
 
 **Also launch the Timing Watcher** — poll `screenshot-timing.jsonl` every 5s, kill test on unexcused SLOW entries:
 
@@ -671,6 +844,7 @@ final class MyJourneyTests: JourneyTestCase {
 
 - **No iteration limit.** Loop runs until user stops or stop condition met.
 - **Stall detection:** If Builder or Tester produces no changes for 2 consecutive iterations, log and re-launch with Inspector's last failure list.
-- **Never modify spec.md** — read-only.
+- **Only the Analyst can modify the spec** (local `spec.md` or gist) — read-only for all other agents. The Analyst must confirm changes with the human before writing.
+- **feedback-log.md is append-only** — entries are never deleted, only marked resolved.
 - **Pitfalls gist is append-only.**
 - Recurring tasks auto-expire after 7 days if run via `/loop`.
