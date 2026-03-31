@@ -1,13 +1,10 @@
 ---
 name: autocraft
 description: >
-  Build and verify user journeys from spec.md with real implementations. Orchestrates
-  an Analyst (collects human feedback, writes specs), a Builder agent (implements features),
-  a Tester agent (writes and runs journey tests independently), and an Inspector agent
-  (verifies real output with automated scans) in a loop until all acceptance criteria
-  are behaviorally covered.
   Use when the user says "autocraft", "build journeys", "test the spec", or "cover my spec".
-argument-hint: [spec-file-path]
+  Also use when the user has a spec.md and wants automated implementation with real output
+  verification, or when building UI features that need screenshot-verified acceptance criteria.
+argument-hint: "[spec-file-path]"
 ---
 
 # Autocraft
@@ -33,6 +30,23 @@ The **Inspector** verifies output with automated scans and subjective review. On
 The **Orchestrator** manages handoffs and commits only when the Inspector approves. → below
 
 **Why this separation matters:** A builder who writes their own tests optimizes for tests that pass — not for tests that prove features work. They know the button is wired up, so they assert it exists and move on. A separate tester doesn't know the internals. They read the spec, click the button, and check what happened. If nothing happened, they write a failing test — and the builder has to make it pass.
+
+---
+
+## When to Use
+
+- Building a new app or feature set from a spec with multiple acceptance criteria
+- You want automated, screenshot-verified proof that every criterion is met
+- The project needs real implementations (not stubs) with independent test verification
+- You have a `spec.md` (or gist) describing requirements and acceptance criteria
+
+## When NOT to Use
+
+- **Single-file bug fixes** — just fix the bug directly, autocraft is overkill
+- **Pure refactoring** with no user-visible behavior change — no acceptance criteria to verify
+- **Projects without UI** (CLI tools, libraries, APIs) — autocraft's screenshot verification assumes a GUI
+- **Quick prototyping** where stubs are acceptable — autocraft enforces real implementations
+- **No spec yet and you're not ready to write one** — start with the Analyst step or write spec.md first
 
 ---
 
@@ -83,143 +97,9 @@ The Orchestrator detects the source type at startup and stores it in `journey-lo
 
 ## Playbooks
 
-Playbooks are shared, platform-specific knowledge bases stored as GitHub gists. Each playbook targets a specific platform or domain. Agents load the relevant playbook(s) at the start of every iteration.
+Playbooks are shared, platform-specific knowledge bases stored as GitHub gists. Agents load the relevant playbook(s) at the start of every iteration.
 
-### Playbook Registry
-
-Default registry gist: `bca7073d567ca8b7ba79ff4bad5fb2c5`
-
-**Local override:** If `.autocraft` exists at the repo root, read the registry gist ID from it:
-
-```json
-{
-  "registry_gist_id": "bca7073d567ca8b7ba79ff4bad5fb2c5"
-}
-```
-
-The Orchestrator resolves the registry ID in this order:
-1. `.autocraft` file in repo root → use `registry_gist_id`
-2. No `.autocraft` file → use default `bca7073d567ca8b7ba79ff4bad5fb2c5`
-
-```bash
-# Read the registry (replace <registry-id> with resolved ID)
-gh gist view <registry-id> -f playbooks.json
-
-# Update the registry (non-interactive)
-gh api --method PATCH /gists/<registry-id> \
-  -f "files[playbooks.json][content]=$(cat /tmp/playbooks.json)"
-```
-
-Registry format:
-```json
-{
-  "playbooks": [
-    {
-      "platform": "macos",
-      "gist_id": "84a5c108d5742c850704a5088a3f4cbf",
-      "description": "Xcode, SwiftUI, XCUITest, codesign, ScreenCaptureKit"
-    }
-  ]
-}
-```
-
-### Playbook Commands
-
-```bash
-# List files in a playbook
-gh gist view <gist-id> --files
-
-# Read a specific entry
-gh gist view <gist-id> -f <filename>
-
-# Add or update an entry (write file locally, then push)
-gh api --method PATCH /gists/<gist-id> \
-  -f "files[<filename>.md][content]=$(cat /tmp/<filename>.md)"
-
-# Delete an entry
-gh api --method PATCH /gists/<gist-id> \
-  -f "files[<filename>.md]="
-```
-
-### Creating or Updating a Playbook
-
-**Create a new playbook** (e.g., "create a web playbook"):
-
-1. **Gather content** — ask the user what entries to include, or accept content they provide
-2. **Write entry files** to `/tmp/` using kebab-case names: `{category}-{short-name}.md` (e.g., `networking-cors-preflight.md`, `testing-playwright-selectors.md`)
-3. **Create the gist**:
-   ```bash
-   gh gist create --public -d "Autocraft playbook: {platform}" /tmp/entry1.md /tmp/entry2.md ...
-   # Capture the gist ID from the output URL (last path segment)
-   ```
-4. **Register the playbook** — fetch the registry gist (resolve ID from `.autocraft` or default), add the new entry, push back:
-   ```bash
-   # Fetch current registry
-   gh gist view <registry-id> -f playbooks.json > /tmp/playbooks.json
-   # Add new entry to the playbooks array (use jq or manual edit)
-   # Push updated registry
-   gh api --method PATCH /gists/<registry-id> \
-     -f "files[playbooks.json][content]=$(cat /tmp/playbooks.json)"
-   ```
-   Platform keys: lowercase, no spaces (e.g., `macos`, `web`, `ios`, `android`, `go`, `python`)
-5. **Clean up** temp files in `/tmp/`
-
-**Update an existing playbook** (e.g., "add a CORS entry to the web playbook", "update the builder macOS guide"):
-
-1. **Resolve the gist ID** — look up the platform in the registry to get its `gist_id`
-2. **Fetch current content** (if updating an existing entry):
-   ```bash
-   gh gist view <gist-id> -f <filename>.md > /tmp/<filename>.md
-   ```
-3. **Write or edit** the entry file in `/tmp/`
-4. **Push** — the same PATCH command adds new files or overwrites existing ones:
-   ```bash
-   gh api --method PATCH /gists/<gist-id> \
-     -f "files[<filename>.md][content]=$(cat /tmp/<filename>.md)"
-   ```
-   Multiple files can be pushed in a single PATCH by adding more `-f` flags.
-5. **Clean up** temp files in `/tmp/`
-
-Each entry in a playbook should follow this format (2-5 sentences per section minimum, Solution must include runnable code or exact commands):
-
-```markdown
-# {Short title}
-
-## Problem
-{What goes wrong and when}
-
-## Solution
-{Exact steps, commands, or code to fix it}
-
-## Why
-{Root cause — so agents can recognize variants of the same problem}
-```
-
-### Selecting Playbooks for a Project
-
-The Orchestrator resolves the registry gist ID (from `.autocraft` or the default) at startup and loads ALL registered playbooks. If the project only uses one platform, only that playbook's entries are included in agent prompts.
-
-**Error handling:** If the registry gist fetch fails (network, auth), warn the user and proceed without playbooks. Do not abort the build loop.
-
-**Ownership (auto-fork):** Only the gist owner can update the registry. When the Orchestrator needs to update the registry (e.g., registering a new playbook) and the `gh api PATCH` fails with a 404 or 403, automatically fork and switch:
-
-```bash
-# 1. Fork the registry
-FORK_URL=$(gh gist fork <registry-id> 2>&1)
-FORK_ID=$(echo "$FORK_URL" | grep -oE '[a-f0-9]{20,}' | tail -1)
-
-# 2. Save fork ID to .autocraft
-echo "{\"registry_gist_id\": \"$FORK_ID\"}" > .autocraft
-
-# 3. Retry the update with the fork
-gh api --method PATCH /gists/$FORK_ID \
-  -f "files[playbooks.json][content]=$(cat /tmp/playbooks.json)"
-
-# 4. Commit .autocraft
-git add .autocraft && git commit -m "Use forked playbook registry: $FORK_ID"
-```
-
-This is transparent — future sessions read `.autocraft` and use the fork automatically.
+Default registry gist: `bca7073d567ca8b7ba79ff4bad5fb2c5`. Override via `.autocraft` file at repo root. See [playbooks.md](playbooks.md) for full registry management, CRUD commands, entry format, and auto-fork behavior.
 
 ---
 
@@ -227,18 +107,68 @@ This is transparent — future sessions read `.autocraft` and use the fork autom
 
 You are the skeptical project manager. You don't write code. You don't review screenshots. You manage handoffs and ensure neither the Builder, Tester, nor Inspector cuts corners. You commit ONLY when the Inspector approves.
 
-**Analyst integration:** Before starting the build loop, check if the Analyst has been invoked. If not, launch the Analyst first to confirm the spec with the human. During the loop, check `feedback-log.md` at every handoff point (between Steps 3→4, 4→5, 5→3) for new entries. Route feedback items to the appropriate agent as part of their next launch directive.
+**Analyst integration:** Before starting the build loop, check if the Analyst has been invoked. If not, launch the Analyst first to confirm the spec with the human. During the loop, check `feedback-log.md` at every handoff point for new entries. Route feedback items to the appropriate agent as part of their next launch directive.
 
-## Step 0: Launch Analyst (first iteration only)
+```dot
+digraph orchestrator_loop {
+    rankdir=TB;
+
+    "Start" [shape=doublecircle];
+    "Analyst confirmed spec?" [shape=diamond];
+    "Launch Analyst" [shape=box];
+    "Load playbooks" [shape=box];
+    "Build criteria master list" [shape=box];
+    "Pre-build simulation scan" [shape=box];
+    "Launch Builder" [shape=box];
+    "Generate test contract" [shape=box];
+    "Integration tests needed?" [shape=diamond];
+    "Generate integration contract" [shape=box];
+    "Launch Tester" [shape=box];
+    "Validate contract compliance" [shape=box];
+    "Compliance passes?" [shape=diamond];
+    "Launch Inspector" [shape=box];
+    "Inspector verdict?" [shape=diamond];
+    "Commit + next criteria" [shape=box];
+    "All criteria covered?" [shape=diamond];
+    "Done" [shape=doublecircle];
+    "Route failures to agents" [shape=box];
+
+    "Start" -> "Analyst confirmed spec?";
+    "Analyst confirmed spec?" -> "Load playbooks" [label="yes"];
+    "Analyst confirmed spec?" -> "Launch Analyst" [label="no"];
+    "Launch Analyst" -> "Load playbooks";
+    "Load playbooks" -> "Build criteria master list";
+    "Build criteria master list" -> "Pre-build simulation scan";
+    "Pre-build simulation scan" -> "Launch Builder";
+    "Launch Builder" -> "Generate test contract";
+    "Generate test contract" -> "Integration tests needed?";
+    "Integration tests needed?" -> "Generate integration contract" [label="yes"];
+    "Integration tests needed?" -> "Launch Tester" [label="no"];
+    "Generate integration contract" -> "Launch Tester";
+    "Launch Tester" -> "Validate contract compliance";
+    "Validate contract compliance" -> "Compliance passes?";
+    "Compliance passes?" -> "Launch Inspector" [label="yes"];
+    "Compliance passes?" -> "Launch Tester" [label="no — re-launch"];
+    "Launch Inspector" -> "Inspector verdict?";
+    "Inspector verdict?" -> "Commit + next criteria" [label="polished"];
+    "Inspector verdict?" -> "Route failures to agents" [label="needs-extension"];
+    "Route failures to agents" -> "Launch Builder";
+    "Commit + next criteria" -> "All criteria covered?";
+    "All criteria covered?" -> "Done" [label="yes — score >= 95%"];
+    "All criteria covered?" -> "Load playbooks" [label="no — next iteration"];
+}
+```
+
+## Step 1: Launch Analyst (first iteration only)
 
 If this is the first iteration and `spec.md` does not exist or the human has new input:
 1. Launch the **Analyst** (foreground) with [analyst.md](analyst.md) contents and the human's request
 2. The Analyst will gather requirements, write/update `spec.md`, and confirm with the human
-3. Only proceed to Step 0.5 after the Analyst signals that the spec is confirmed
+3. Only proceed to Step 2 after the Analyst signals that the spec is confirmed
 
 If the human provides feedback mid-loop, re-launch the Analyst to classify and route it (see Analyst Step 5). The Analyst writes to `feedback-log.md`; the Orchestrator picks up routed items at the next handoff.
 
-## Step 0.5: Load Playbooks (every iteration)
+## Step 2: Load Playbooks (every iteration)
 
 Resolve the registry gist ID: read `.autocraft` from repo root if it exists, otherwise use default `bca7073d567ca8b7ba79ff4bad5fb2c5`. Fetch the registry, then for each registered playbook, fetch and read ALL files from its gist.
 
@@ -246,7 +176,7 @@ Resolve the registry gist ID: read `.autocraft` from repo root if it exists, oth
 
 **Template entries** (prefixed `template-`) contain base class code or boilerplate. The Builder and Tester copy these into the project as needed.
 
-## Step 1: Build Acceptance Criteria Master List
+## Step 3: Build Acceptance Criteria Master List
 
 Read the spec in full (local file or `gh gist view <gist-id> -f spec.md`). For every requirement, extract EVERY acceptance criterion. Write to `journey-loop-state.md`:
 
@@ -272,27 +202,27 @@ Read `journey-state.md` to determine what to work on:
 3. Check `feedback-log.md` for **important** items — incorporate into next agent launch
 4. If none, pick next uncovered spec requirement
 
-## Step 2: Pre-Build Simulation Scan
+## Step 4: Pre-Build Simulation Scan
 
 Before launching the Builder, scan for simulation infrastructure that bypasses real code paths. The playbook provides platform-specific scan commands (`role-orchestrator-{platform}.md`).
 
 If any scan is not CLEAN: include in Builder's directive as **first priority to fix**.
 
-## Step 3: Launch Builder Agent (background)
+## Step 5: Launch Builder Agent (background)
 
 Spawn a background Agent with:
 1. [builder.md](builder.md) contents
 2. Full `AGENTS.md` content (if exists)
 3. Full playbook contents (all registered playbooks)
 4. Current `journey-state.md`
-5. Directive: which journey to build/extend, plus any simulation fixes from Step 2
+5. Directive: which journey to build/extend, plus any simulation fixes from Step 4
 6. Any **Builder-routed feedback** from `feedback-log.md` (unresolved items where `Routed to: Builder`)
 
 The Builder implements production features and creates the journey directory, but does NOT write test files.
 
 Wait for Builder to complete.
 
-## Step 3b: Generate Test Contract (Orchestrator does this — NOT the Tester)
+## Step 6: Generate Test Contract (Orchestrator does this — NOT the Tester)
 
 **This is the critical structural step.** The Orchestrator — not the Tester — defines what the test must prove. The Tester only implements it.
 
@@ -330,7 +260,7 @@ Phase 3: [state after action Y] — depends on Phase 2
 3. The Orchestrator must think adversarially: "If the Builder left the handler empty but kept the UI element, would this assertion catch it?" If not, strengthen the assertion.
 4. Every `behavioral` criterion MUST have an ASSERT_CONTAINS that would FAIL if the action produced an error, a prompt, or any unintended intermediate state instead of the expected result. "Output changed" or "output is not empty" are NEVER sufficient for ASSERT_CONTAINS.
 
-## Step 3b-unit: Analyze for Integration Tests & Refactor if Needed
+## Step 7: Analyze for Integration Tests & Refactor if Needed
 
 After the Builder completes, the Orchestrator analyzes the new/modified code to decide if integration-level unit tests are needed. **Not every journey needs them.** UI tests cover user-visible behavior; integration tests cover "does the plumbing actually work."
 
@@ -391,7 +321,7 @@ Write to `journeys/{NNN}-{name}/integration-test-contract.md`:
 5. Each test must validate **output content**, not just **output existence** — a file existing but containing garbage is a failure
 6. If a test needs a large resource (ML model, large file), check it exists first and fail with a clear message ("Model not found at path X — run setup first") rather than silently skipping
 
-## Step 3c: Launch Tester Agent (background)
+## Step 8: Launch Tester Agent (background)
 
 After the test contracts are written, spawn a background Tester Agent with:
 1. [tester.md](tester.md) contents
@@ -430,7 +360,7 @@ done
 
 Wait for Tester to complete.
 
-## Step 3d: Validate Contract Compliance (structural — before Inspector)
+## Step 9: Validate Contract Compliance (structural — before Inspector)
 
 After the Tester finishes, validate the test file against the test contract. This is a **mechanical check** — not subjective review.
 
@@ -445,17 +375,17 @@ The playbook provides the platform-specific grep patterns and test file path con
 
 If ANY check fails: **re-launch the Tester immediately** with the specific violations. Do NOT proceed to Inspector.
 
-## Step 4: Launch Inspector Agent (foreground)
+## Step 10: Launch Inspector Agent (foreground)
 
 After Tester finishes, spawn an Inspector Agent with:
 1. [inspector.md](inspector.md) contents
 2. The spec file path
 3. Directive: evaluate the most recent journey
-4. The `/frontend-design` skill content — invoke `/frontend-design` yourself (Orchestrator) and include its full output in the Inspector's prompt so the Inspector can apply its design principles during screenshot review without interrupting its own flow
+4. If the `/frontend-design` skill is installed, invoke it and include its output in the Inspector's prompt for design principles during screenshot review (optional — skip if not available)
 
 Wait for Inspector verdict.
 
-## Step 5: Act on Inspector's Verdict
+## Step 11: Act on Inspector's Verdict
 
 **If Inspector set `polished`:**
 1. Commit all changes (journey files, screenshots, app code, updated journey-state.md)
@@ -473,9 +403,9 @@ Wait for Inspector verdict.
 4. When updating the contract after Inspector rejection:
    - For each failed criterion, tighten the ASSERT to make the failure structurally impossible (e.g., if the Tester used `.exists` where the contract said `behavioral`, add an explicit example assertion to the contract)
    - Add any missing FAIL_IF_BLOCKED messages the Inspector identified
-5. Go back to Step 3 (or 3b/3c)
+5. Go back to Step 5 (or Step 6/8 depending on failure type)
 
-## Step 6: Pre-Stop Audit (when score >= 90% or all journeys polished)
+## Step 12: Pre-Stop Audit (when score >= 90% or all journeys polished)
 
 1. Read the Acceptance Criteria Master List (M rows)
 2. For each criterion: confirm journey maps it + test step exists + screenshot exists
@@ -504,6 +434,19 @@ Usage patterns and code examples are documented in the playbook template entry.
 
 ---
 
+# Common Mistakes
+
+| Mistake | Fix |
+|---------|-----|
+| Builder keeps getting re-launched because test contract assertions are too strict for the current implementation stage | Orchestrator should write contracts that match what's actually testable now, then tighten in later iterations |
+| Inspector rejects because screenshots show permission dialogs | Run `/preflight-permissions` first to grant all TCC permissions |
+| Tester writes existence-only assertions (`.exists`) for behavioral criteria | Orchestrator's contract compliance check (Step 9) should catch this before Inspector — if it doesn't, tighten the contract |
+| Builder and Tester both try to modify the same file | Enforce role separation — Builder writes production code, Tester writes test code only |
+| Loop stalls with no progress for multiple iterations | Check stall detection — if Builder/Tester produce no changes for 2 iterations, re-launch with Inspector's last failure list |
+| Playbook gist update fails with 403/404 | Auto-fork triggers automatically — see [playbooks.md](playbooks.md) |
+
+---
+
 # Safety & Limits
 
 - **No iteration limit.** Loop runs until user stops or stop condition met.
@@ -512,3 +455,15 @@ Usage patterns and code examples are documented in the playbook template entry.
 - **feedback-log.md is append-only** — entries are never deleted, only marked resolved.
 - **Playbook gists are append-only.** New entries can be added; existing entries should not be deleted.
 - Recurring tasks auto-expire after 7 days if run via `/loop`.
+
+---
+
+# Optional External Skills
+
+These skills enhance autocraft but are not required. If not installed, autocraft works without them.
+
+| Skill | Used by | Purpose |
+|-------|---------|---------|
+| `/frontend-design` | Inspector (via Orchestrator) | Design principles for screenshot review. If missing, Inspector uses general design judgment. |
+| `/attack-blocker` | Builder | Structured approach to resolving permission/hardware blockers. If missing, Builder reports blockers to Orchestrator directly. |
+| `/preflight-permissions` | User (before first run) | Grants macOS TCC permissions. Bundled in this repo. |

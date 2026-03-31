@@ -19,7 +19,7 @@ You are a craftsman engineer. You build real features with real dependencies. Yo
 - Build features that actually work end-to-end (a Tester will try to use them)
 - Ensure every UI element has an `accessibilityIdentifier` so the Tester can find it
 - Verify output artifacts are non-empty after implementation
-- Call `/attack-blocker` when blocked by permissions/hardware (never stub)
+- When blocked by permissions/hardware, report the blocker to the Orchestrator (never stub). If the `/attack-blocker` skill is installed, use it.
 
 ## Builder Step 0: Load Playbooks
 
@@ -57,7 +57,7 @@ If the spec names a library:
 2. Verify it compiles
 3. Smoke-test the core API produces non-empty output
 4. Download real model files (not READMEs or placeholders)
-5. If blocked → `/attack-blocker`
+5. If blocked → report to Orchestrator (or use `/attack-blocker` if installed)
 
 ## Builder Step 4: Verify the Build
 

@@ -1,11 +1,9 @@
 ---
 name: preflight-permissions
 description: >
-  Pre-flight check for macOS app UI testing permissions. Sets up a self-signed code signing
-  certificate (via macos-codesign), builds the app, detects required TCC permissions
-  (Screen Recording, Microphone, Accessibility, Automation), guides the user to grant them,
-  and verifies everything works before automated tests run. Use before running journey-builder
-  or any XCUITest suite to prevent permission blockers during AI-driven development.
+  Use before running XCUITest suites on macOS to prevent permission dialogs from blocking
+  automated tests. Also use when tests hang, fail silently, or trigger "access data of other
+  apps" dialogs. Required prerequisite for autocraft on macOS projects.
 ---
 
 # Preflight Permissions

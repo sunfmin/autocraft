@@ -5,10 +5,14 @@ A Claude Code skill that builds and tests user journeys from `spec.md` with real
 ## What it does
 
 - Reads your product spec and builds UI test journeys (XCUITest for macOS, Playwright for web)
-- Three agent roles with strict separation: **Builder** (implements), **Inspector** (verifies with automated scans), **Orchestrator** (manages handoffs and commits)
-- Builder cannot review its own work or set "polished" — only the Inspector can
+- Five agent roles with strict separation:
+  - **Analyst** — talks to the human, gathers requirements, writes and updates `spec.md`
+  - **Builder** — implements real features (no stubs, no fakes)
+  - **Tester** — writes and runs journey tests independently from the Builder
+  - **Inspector** — verifies real output with automated scans and subjective review
+  - **Orchestrator** — manages handoffs, generates test contracts, commits only after Inspector approves
+- Builder cannot write tests or review its own work; Tester cannot modify production code; only the Inspector can set "polished"
 - Inspector runs objective scans (file sizes, grep for stubs/bypass flags) before any subjective review
-- Orchestrator commits only after Inspector approves
 - Tracks every acceptance criterion and won't stop until all are implemented, tested, and screenshot-verified with real output
 
 ## Installation
@@ -43,21 +47,33 @@ npx skills add sunfmin/autocraft
 ## How it works
 
 ```
-Orchestrator
-  |
-  +-- spawns --> Builder Agent
-  |               - Implements real features (no stubs)
-  |               - Writes honest tests (asserts on content, not existence)
-  |               - Sets up real test content (plays audio, opens windows)
-  |               - Sets status to "needs-review"
-  |
-  +-- spawns --> Inspector Agent
-  |               - Runs 4 objective scans (artifacts, bypass flags, stubs, assertions)
-  |               - Reviews screenshots for real content
-  |               - Sets status to "polished" or "needs-extension"
-  |
-  +-- commits only when Inspector says "polished"
-  +-- re-launches Builder if Inspector says "needs-extension"
+Human ◄──► Analyst (foreground)
+               │
+               ├──► spec.md (writes/updates)
+               ├──► feedback-log.md (routes feedback)
+               │
+               ▼
+           Orchestrator
+             |
+             +-- spawns --> Builder Agent
+             |               - Implements real features (no stubs)
+             |               - Sets up real dependencies and content
+             |               - CANNOT write tests or review own work
+             |
+             +-- generates test contracts (what to prove)
+             |
+             +-- spawns --> Tester Agent
+             |               - Implements test contracts as executable tests
+             |               - Runs integration tests first, then UI tests
+             |               - Screenshots every step, sets "needs-review"
+             |
+             +-- spawns --> Inspector Agent
+             |               - Runs 4 objective scans (artifacts, bypass flags, stubs, assertions)
+             |               - Reviews screenshots for real content
+             |               - Sets status to "polished" or "needs-extension"
+             |
+             +-- commits only when Inspector says "polished"
+             +-- re-launches Builder/Tester if Inspector says "needs-extension"
 ```
 
 ## Project layout
