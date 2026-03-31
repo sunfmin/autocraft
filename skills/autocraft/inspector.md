@@ -52,7 +52,11 @@ If the test only asserts `.exists` or `.isEnabled` on an element whose criterion
 Only after ALL scans pass:
 
 ### 2a. Build + Test Check
-Run the build. Run the journey's tests. Record pass/fail and timing.
+Run the build. Run **unit tests first** (if they exist), then UI tests. Record pass/fail and timing for each.
+
+If unit tests exist but fail → verdict = `needs-extension` immediately. Unit test failures indicate broken core functionality that UI tests cannot compensate for.
+
+If unit tests pass but UI tests fail → investigate whether the failure is a test issue or production issue.
 
 ### 2b. Screenshot Review
 Read ALL screenshots in `journeys/{NNN}/screenshots/`. For each screenshot, evaluate:

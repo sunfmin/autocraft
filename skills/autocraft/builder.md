@@ -76,7 +76,12 @@ Output a report with these sections — the Orchestrator uses this to generate t
    - **Prerequisite state**: what state the app must be in before this criterion can be tested (e.g., "terminal session must be active, recording must be selected")
    - **How to reach it in a UI test**: the exact sequence of UI actions (e.g., "click startRecordingButton, wait for outputArea to appear, then start+stop a recording, then click a recording row")
    - **Observable verification**: what changes in the UI or on disk that proves the criterion works (e.g., "terminal output area appears with shell prompt text", "transcript.jsonl contains JSON lines with start/end/text/language fields")
-5. **Blockers encountered** and how they were resolved
+5. **Integration boundaries** — identify where data flows between components and could silently fail:
+   - **Data pipelines**: "Component A feeds data to Component B via {mechanism}" — what format? What could go wrong?
+   - **External dependencies**: libraries loaded at runtime, models initialized — do they actually produce output?
+   - **File I/O chains**: input file → processing → output file — is the output valid, or just non-empty?
+   - For each: list the source files involved, the data flow direction, and what "silently broken" would look like
+6. **Blockers encountered** and how they were resolved
 
 ## Builder Rules
 

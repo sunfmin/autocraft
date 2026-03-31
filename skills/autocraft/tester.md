@@ -84,6 +84,23 @@ Run the test. Verify all screenshots are written to `journeys/{NNN}/screenshots/
 
 Set status to **`needs-review`**. NEVER set `polished`.
 
+## Tester Step 1b: Implement Integration Tests (before UI tests, if contract exists)
+
+If the Orchestrator provides an `integration-test-contract.md`, implement integration tests **before** UI tests. These test real data pipelines, not individual methods.
+
+1. **Create a unit test target** if it doesn't exist (project config depends on platform)
+2. **Write integration test files** using `@testable import` to access internals
+3. **Run integration tests first** — they're faster than UI tests and catch silent plumbing failures early
+4. If integration tests fail, report the failure — the pipeline is broken, UI tests will be meaningless
+5. Integration tests MUST NOT launch the app or interact with UI — instantiate components directly
+
+### Integration test principles:
+- **Test pipelines, not methods** — instantiate the full chain (A → B → C), feed real input, verify real output
+- **Use real dependencies** — don't mock the thing you're trying to verify. Use real files, real libraries, real codecs.
+- **Validate content, not just existence** — a file existing is not proof it's correct. Parse it, check sizes, verify format.
+- **Use temp directories** for file output — clean up after each test
+- **Small test data** — 2-second audio clips, minimal valid files, tiny models if available. Keep each test under 30 seconds.
+
 ## Tester Rules
 
 - No hard-coded delays (no `sleep()` or equivalent)
@@ -94,3 +111,4 @@ Set status to **`needs-review`**. NEVER set `polished`.
 - **NEVER edit generated project files** — use the platform's project generator (see playbook)
 - One journey at a time
 - **The contract is non-negotiable** — if it says behavioral, prove behavior. If a prerequisite fails, FAIL. Never work around the contract.
+- **Unit tests run before UI tests** — if a unit-test-contract exists, implement and run those first

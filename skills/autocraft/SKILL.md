@@ -71,6 +71,7 @@ The Orchestrator detects the source type at startup and stores it in `journey-lo
 |------|-----------|---------|
 | `journeys/*/` | Builder (code), Tester (tests+screenshots) | Inspector, Orchestrator |
 | `journeys/*/test-contract.md` | **Orchestrator** | **Tester** (implements it), Inspector (validates against it) |
+| `journeys/*/integration-test-contract.md` | **Orchestrator** | **Tester** (implements unit tests), Inspector (validates) |
 | `journeys/*/screenshot-timing.jsonl` | Tester (snap helper) | Orchestrator (watcher) |
 | `journey-state.md` | Tester (`needs-review`), Inspector (`polished`/`needs-extension`) | All |
 | `journey-refinement-log.md` | Inspector | Orchestrator |
@@ -329,18 +330,80 @@ Phase 3: [state after action Y] — depends on Phase 2
 3. The Orchestrator must think adversarially: "If the Builder left the handler empty but kept the UI element, would this assertion catch it?" If not, strengthen the assertion.
 4. Every `behavioral` criterion MUST have an ASSERT_CONTAINS that would FAIL if the action produced an error, a prompt, or any unintended intermediate state instead of the expected result. "Output changed" or "output is not empty" are NEVER sufficient for ASSERT_CONTAINS.
 
+## Step 3b-unit: Analyze for Integration Tests & Refactor if Needed
+
+After the Builder completes, the Orchestrator analyzes the new/modified code to decide if integration-level unit tests are needed. **Not every journey needs them.** UI tests cover user-visible behavior; integration tests cover "does the plumbing actually work."
+
+### When to generate integration tests
+
+Scan the Builder's code for **silent failure risks** — things that break without UI tests catching it:
+
+- **External dependency** — C/FFI, vendored libs, model loading: links at build time but may crash/nil at runtime
+- **Data pipeline with file I/O** — output file exists but contains garbage (wrong format, corrupted)
+- **Multi-stage handoff** — A→B→C where the handoff silently drops data
+- **Format conversion** — resampling, encoding, serialization where content is wrong but file looks valid
+
+If none of these patterns are present (pure UI, layout, cosmetic), skip this step.
+
+### Analysis process
+
+1. **Read the Builder's new/modified files** in the Data and Domain layers
+2. **Identify integration boundaries** — where does data cross between components? What could silently fail?
+3. **Ask: "If I empty this function's body, would the UI test still pass?"** If yes → needs an integration test
+4. **Check testability** — can the component be instantiated and called without launching the full app? If not, the Builder must **refactor** it to be testable (extract logic from UI, inject dependencies)
+
+### Refactoring directive (when needed)
+
+If a component can't be tested in isolation (e.g., business logic is tangled with UI, or a service is a singleton with no injection point), the Orchestrator sends the Builder back with a **refactoring directive**:
+
+> "Refactor {Component} so it can be instantiated in a unit test without launching the app. Extract the core logic into a testable function/class that takes explicit inputs and returns explicit outputs."
+
+The Builder refactors, the Orchestrator re-analyzes, then generates the test contract.
+
+### Integration test contract
+
+Write to `journeys/{NNN}-{name}/integration-test-contract.md`:
+
+```markdown
+# Integration Test Contract: Journey {NNN}
+
+## Analysis
+<!-- What was found in the code that needs integration testing -->
+- Pipeline: {A → B → C}
+- Silent failure risk: {what could break without UI tests catching it}
+- Files involved: {list of source files}
+
+## Tests
+
+### IT{N}: {pipeline or integration being verified}
+- SCOPE: {the full pipeline being tested — not a single method}
+- SETUP: {test fixtures, temp directories, sample data files}
+- ACTION: {instantiate the pipeline, feed known input, run to completion}
+- ASSERT: {verify the output is correct — file exists AND content is valid}
+- FAIL_MESSAGE: "{what's broken if this fails}"
+```
+
+**Rules:**
+1. Test **pipelines**, not individual methods — each test should exercise a real data flow from input to output
+2. Use real dependencies (real files, real libraries) — mocks hide the exact bugs these tests are meant to catch
+3. Tests must be runnable without launching the app — use `@testable import` and direct instantiation
+4. Fast: <30s per test. Use small test data (short audio clips, tiny models if possible, minimal files)
+5. Each test must validate **output content**, not just **output existence** — a file existing but containing garbage is a failure
+6. If a test needs a large resource (ML model, large file), check it exists first and fail with a clear message ("Model not found at path X — run setup first") rather than silently skipping
+
 ## Step 3c: Launch Tester Agent (background)
 
-After the test contract is written, spawn a background Tester Agent with:
+After the test contracts are written, spawn a background Tester Agent with:
 1. [tester.md](tester.md) contents
 2. Full `AGENTS.md` content (if exists)
 3. Full playbook contents (all registered playbooks)
 4. The spec file path
-5. **The test contract** (`journeys/{NNN}-{name}/test-contract.md`) — the Tester implements this, does not redefine it
-6. The Builder's report (accessibility identifiers, testability notes)
-7. Directive: implement and run the test contract
-8. If this is a re-launch after rejection: include the specific failure list with line numbers
-9. Any **Tester-routed feedback** from `feedback-log.md` (unresolved items where `Routed to: Tester`)
+5. **The UI test contract** (`journeys/{NNN}-{name}/test-contract.md`)
+6. **The integration test contract** (`journeys/{NNN}-{name}/integration-test-contract.md`) if it exists
+7. The Builder's report (accessibility identifiers, testability notes, integration boundaries)
+8. Directive: implement and run integration tests first, then UI tests
+9. If this is a re-launch after rejection: include the specific failure list with line numbers
+10. Any **Tester-routed feedback** from `feedback-log.md` (unresolved items where `Routed to: Tester`)
 
 **Also launch the Timing Watcher** — poll `screenshot-timing.jsonl` every 5s, kill test on unexcused SLOW entries:
 
