@@ -34,17 +34,36 @@ Read ALL playbook entries provided in your prompt. Apply every relevant one.
 
 Check if the test target has the journey test base class. If missing, copy from the playbook's template entry (`template-journey-test-case.md`). Apply platform-specific project configuration from the playbook (`role-tester-{platform}.md`).
 
-## Tester Step 1: Read the Test Contract
+## Tester Step 1: Read the Test Contracts
 
-Read the test contract at `journeys/{NNN}-{name}/test-contract.md`. This is your specification. For each criterion, note:
+Read the UI test contract at `journeys/{NNN}-{name}/test-contract.md`. For each criterion, note:
 - The **prerequisite** state and which Phase establishes it
 - The **action** to perform
 - The **assertion** to make and its type (behavioral / state / existence)
 - The **FAIL_IF_BLOCKED** message to use if the prerequisite can't be met
 
-Also read the Builder's report for accessibility identifiers and the spec for additional context.
+Also read the **integration test contract** at `journeys/{NNN}-{name}/integration-test-contract.md` if it exists. This defines pipeline-level tests to run before UI tests.
 
-## Tester Step 2: Implement the Contract as a Test
+Also read the Builder's report for accessibility identifiers, testability notes, and integration boundaries.
+
+## Tester Step 1b: Implement Integration Tests (before UI tests, if contract exists)
+
+If the Orchestrator provides an `integration-test-contract.md`, implement integration tests **before** UI tests. These test real data pipelines, not individual methods.
+
+1. **Create a unit test target** if it doesn't exist (project config depends on platform — see playbook)
+2. **Write integration test files** using the platform's test-visibility mechanism to access internals (see playbook)
+3. **Run integration tests first** — they're faster than UI tests and catch silent plumbing failures early
+4. If integration tests fail, report the failure — the pipeline is broken, UI tests will be meaningless
+5. Integration tests MUST NOT launch the app or interact with UI — instantiate components directly
+
+### Integration test principles:
+- **Test pipelines, not methods** — instantiate the full chain (A → B → C), feed real input, verify real output
+- **Use real dependencies** — don't mock the thing you're trying to verify. Use real files, real libraries, real codecs.
+- **Validate content, not just existence** — a file existing is not proof it's correct. Parse it, check sizes, verify format.
+- **Use temp directories** for file output — clean up after each test
+- **Small test data** — 2-second audio clips, minimal valid files, tiny models if available. Keep each test under 30 seconds.
+
+## Tester Step 2: Implement the UI Test Contract
 
 Follow the contract's **Phase order** — it defines the state machine. Each Phase establishes state that later Phases depend on.
 
@@ -78,28 +97,13 @@ Flags that bypass real processing are BANNED. The playbook lists platform-specif
 
 ## Tester Step 4: Run Test + Verify
 
-Run the test. Verify all screenshots are written to `journeys/{NNN}/screenshots/`.
+Run the test with **full output streaming** — never filter, pipe, or suppress test output. If the platform supports separate build and test commands, split them so build errors are visible immediately. For platforms where build+test is a single atomic command, run it as-is and use a sub-agent if output would overwhelm context.
+
+Verify all screenshots are written to `journeys/{NNN}/screenshots/`.
 
 ## Tester Step 5: Update Journey State
 
 Set status to **`needs-review`**. NEVER set `polished`.
-
-## Tester Step 1b: Implement Integration Tests (before UI tests, if contract exists)
-
-If the Orchestrator provides an `integration-test-contract.md`, implement integration tests **before** UI tests. These test real data pipelines, not individual methods.
-
-1. **Create a unit test target** if it doesn't exist (project config depends on platform)
-2. **Write integration test files** using `@testable import` to access internals
-3. **Run integration tests first** — they're faster than UI tests and catch silent plumbing failures early
-4. If integration tests fail, report the failure — the pipeline is broken, UI tests will be meaningless
-5. Integration tests MUST NOT launch the app or interact with UI — instantiate components directly
-
-### Integration test principles:
-- **Test pipelines, not methods** — instantiate the full chain (A → B → C), feed real input, verify real output
-- **Use real dependencies** — don't mock the thing you're trying to verify. Use real files, real libraries, real codecs.
-- **Validate content, not just existence** — a file existing is not proof it's correct. Parse it, check sizes, verify format.
-- **Use temp directories** for file output — clean up after each test
-- **Small test data** — 2-second audio clips, minimal valid files, tiny models if available. Keep each test under 30 seconds.
 
 ## Tester Rules
 

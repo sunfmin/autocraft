@@ -290,6 +290,8 @@ If a component can't be tested in isolation (e.g., business logic is tangled wit
 
 The Builder refactors, the Orchestrator re-analyzes, then generates the test contract.
 
+**Loop limit:** If after 2 refactoring attempts the component is still not testable in isolation, skip integration tests for this journey and note the gap in `journey-refinement-log.md`.
+
 ### Integration test contract
 
 Write to `journeys/{NNN}-{name}/integration-test-contract.md`:
@@ -316,7 +318,7 @@ Write to `journeys/{NNN}-{name}/integration-test-contract.md`:
 **Rules:**
 1. Test **pipelines**, not individual methods — each test should exercise a real data flow from input to output
 2. Use real dependencies (real files, real libraries) — mocks hide the exact bugs these tests are meant to catch
-3. Tests must be runnable without launching the app — use `@testable import` and direct instantiation
+3. Tests must be runnable without launching the app — use the platform's test-visibility mechanism to access internals (see playbook) and instantiate components directly
 4. Fast: <30s per test. Use small test data (short audio clips, tiny models if possible, minimal files)
 5. Each test must validate **output content**, not just **output existence** — a file existing but containing garbage is a failure
 6. If a test needs a large resource (ML model, large file), check it exists first and fail with a clear message ("Model not found at path X — run setup first") rather than silently skipping
@@ -444,6 +446,58 @@ Usage patterns and code examples are documented in the playbook template entry.
 | Builder and Tester both try to modify the same file | Enforce role separation — Builder writes production code, Tester writes test code only |
 | Loop stalls with no progress for multiple iterations | Check stall detection — if Builder/Tester produce no changes for 2 iterations, re-launch with Inspector's last failure list |
 | Playbook gist update fails with 403/404 | Auto-fork triggers automatically — see [playbooks.md](playbooks.md) |
+
+---
+
+# Real-Time Feedback During Builds & Tests
+
+Long-running commands (builds, test suites, deploys) MUST produce visible progress. Silent waits kill iteration speed — the human (or Orchestrator) can't react to errors they can't see.
+
+## The Problem
+
+AI agents commonly suppress build/test output to save context window space (via `tail`, `grep`, `| head`, or `run_in_background`). This creates a false economy:
+- A 60-second silent wait hides a 5-second failure that could have been fixed immediately
+- Piped commands (`cmd | grep pattern`) buffer output — nothing appears until the command exits
+- Background tasks with polling add latency and complexity for no benefit when the task is blocking anyway
+
+## Rules for All Agents
+
+1. **Never pipe running process output through filters.** Run build/test commands directly. Let output stream. (Grepping static files for scanning is fine — this rule applies to long-running commands.)
+2. **Never use `tail -N` on long commands.** It waits for completion before showing anything.
+3. **Split multi-step scripts into individual commands** when you need to see each step's result. Don't run a monolithic script that builds + seeds + tests in one invocation — run each phase separately so failures are visible immediately.
+4. **When a command produces too much output** (e.g., npm install with 500 lines), accept the output cost. A bloated context is better than a missed error. If context pressure is a real concern, delegate the command to a **sub-agent** — the sub-agent's context absorbs the verbose output, and only the result (pass/fail + error) returns to the parent.
+5. **React to errors immediately.** If a test fails at second 5 of a 60-second suite, don't wait for the suite to finish. Read the error, fix it, re-run.
+6. **Use sub-agents for isolation, not for hiding.** The right pattern:
+   - Parent agent: coordinates, tracks progress, stays lean
+   - Sub-agent: runs the noisy build/test, absorbs verbose output, returns a concise result
+   - This gives the parent real-time awareness (via the sub-agent's return) without context pollution
+
+## Pattern: Build-Test-Fix with Sub-Agents
+
+When iterating on code + tests:
+
+```
+Builder or Tester (lean context):
+  1. Make code changes
+  2. Spawn sub-agent: "Build and run test X. Return: pass/fail, error message if failed, screenshot paths"
+  3. Sub-agent runs commands with full streaming output (in its own context)
+  4. Sub-agent returns: "FAIL: headerCount expected 2 got 3, line 113"
+  5. Builder/Tester reads error, fixes code, spawns sub-agent again
+```
+
+This is strictly better than:
+- `cmd 2>&1 | tail -5` → hides the error, waits for completion
+- `cmd 2>&1 | grep ERROR` → buffers output, misses context around the error
+- Running in background + polling → adds latency, complex coordination
+
+## Anti-Patterns
+
+| Anti-pattern | Problem | Fix |
+|---|---|---|
+| `./build-and-test.sh \| tail -20` | Waits for full completion, hides early errors | Run each step separately, or use sub-agent |
+| `./test.sh \| grep -E "pass\|fail"` | Pipe buffers, no output until exit | Run directly, or use sub-agent |
+| `run_in_background` + sleep + poll | Adds 5-30s latency per poll cycle | Run in foreground, or use sub-agent |
+| Timeout of 120s on a command that fails at 3s | Waits 120s for nothing | Use shorter timeout + sub-agent |
 
 ---
 

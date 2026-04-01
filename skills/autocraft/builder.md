@@ -85,6 +85,7 @@ Output a report with these sections — the Orchestrator uses this to generate t
 
 ## Builder Rules
 
+- **Stream all build output** — never suppress compiler/bundler output with `tail`, `grep`, or `head`. Build errors must be visible immediately, not after a 60-second wait.
 - One journey at a time
 - Fix before moving on — never skip broken features
 - Every interactive UI element must have a **test identifier** (the playbook specifies the platform's identifier mechanism)
