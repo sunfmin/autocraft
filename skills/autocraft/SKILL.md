@@ -107,7 +107,7 @@ Default registry gist: `bca7073d567ca8b7ba79ff4bad5fb2c5`. Override via `.autocr
 
 You are the skeptical project manager. You don't write code. You don't review screenshots. You manage handoffs and ensure neither the Builder, Tester, nor Inspector cuts corners. You commit ONLY when the Inspector approves.
 
-**Analyst integration:** Before starting the build loop, check if the Analyst has been invoked. If not, launch the Analyst first to confirm the spec with the human. During the loop, check `feedback-log.md` at every handoff point for new entries. Route feedback items to the appropriate agent as part of their next launch directive.
+**Analyst integration — MANDATORY:** Every invocation where `$ARGUMENTS` contains natural language (not a file path or "continue") MUST launch the Analyst FIRST. The Analyst logs feedback to `feedback-log.md` and optionally updates `spec.md`. The Orchestrator MUST NOT skip the Analyst and go directly to the Builder when the user provides feedback. During the loop, check `feedback-log.md` at every handoff point for new entries. Route feedback items to the appropriate agent as part of their next launch directive.
 
 ```dot
 digraph orchestrator_loop {
@@ -133,10 +133,13 @@ digraph orchestrator_loop {
     "Done" [shape=doublecircle];
     "Route failures to agents" [shape=box];
 
-    "Start" -> "Analyst confirmed spec?";
+    "Start" -> "User input is feedback?";
+    "User input is feedback?" [shape=diamond];
+    "User input is feedback?" -> "Launch Analyst" [label="yes — natural language"];
+    "User input is feedback?" -> "Analyst confirmed spec?" [label="no — continue/path"];
+    "Launch Analyst" -> "Analyst confirmed spec?";
     "Analyst confirmed spec?" -> "Load playbooks" [label="yes"];
-    "Analyst confirmed spec?" -> "Launch Analyst" [label="no"];
-    "Launch Analyst" -> "Load playbooks";
+    "Analyst confirmed spec?" -> "Launch Analyst" [label="no spec"];
     "Load playbooks" -> "Build criteria master list";
     "Build criteria master list" -> "Pre-build simulation scan";
     "Pre-build simulation scan" -> "Launch Builder";
@@ -159,14 +162,29 @@ digraph orchestrator_loop {
 }
 ```
 
-## Step 1: Launch Analyst (first iteration only)
+## Step 1: Detect User Intent and Launch Analyst
 
-If this is the first iteration and `spec.md` does not exist or the human has new input:
-1. Launch the **Analyst** (foreground) with [analyst.md](analyst.md) contents and the human's request
-2. The Analyst will gather requirements, write/update `spec.md`, and confirm with the human
-3. Only proceed to Step 2 after the Analyst signals that the spec is confirmed
+**This step runs EVERY invocation, not just the first.** The Orchestrator must classify the user's `$ARGUMENTS` before doing anything else:
 
-If the human provides feedback mid-loop, re-launch the Analyst to classify and route it (see Analyst Step 5). The Analyst writes to `feedback-log.md`; the Orchestrator picks up routed items at the next handoff.
+| `$ARGUMENTS` pattern | Intent | Action |
+|---------------------|--------|--------|
+| Empty, `continue`, or a file/gist path | Resume build loop | Skip Analyst if spec exists |
+| Natural language describing problems, bugs, or desired changes | **Feedback** | **Launch Analyst** to classify, log to `feedback-log.md`, and optionally update `spec.md` |
+| Natural language describing new features or requirements | **New requirement** | **Launch Analyst** to update `spec.md` and log to `feedback-log.md` |
+
+**Detection heuristic:** If `$ARGUMENTS` is NOT one of [`continue`, a file path, a gist URL, a bare gist ID, or empty], treat it as human feedback and launch the Analyst.
+
+### When Analyst is needed:
+1. Launch the **Analyst** (foreground) with [analyst.md](analyst.md) contents and the human's message
+2. The Analyst classifies the feedback, writes to `feedback-log.md`, and optionally updates `spec.md`
+3. After the Analyst completes, the Orchestrator reads `feedback-log.md` for routed items and proceeds to Step 2
+
+### When Analyst is NOT needed:
+- `$ARGUMENTS` is `continue` or a spec path AND `spec.md` exists → skip directly to Step 2
+- But STILL check `feedback-log.md` for unresolved items at every handoff point
+
+### Spec updates
+Only the Analyst can modify `spec.md`. When user feedback implies a spec change (new requirement, changed behavior, removed feature), the Analyst updates the spec AND logs to `feedback-log.md`. The Orchestrator re-reads the spec in Step 3 to pick up changes.
 
 ## Step 2: Load Playbooks (every iteration)
 
