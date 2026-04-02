@@ -54,7 +54,9 @@ If the test only asserts `.exists` or `.isEnabled` on an element whose criterion
 Only after ALL scans pass:
 
 ### 2a. Build + Test Check
-Run the build. Run **unit tests first** (if they exist), then UI tests. Record pass/fail and timing for each.
+Run the build and tests **directly with NO pipes** — never use `| grep`, `| tail`, or `| head` on build/test output. If output is too verbose, spawn a sub-agent to run the command and return pass/fail + error details.
+
+Run **unit tests first** (if they exist), then UI tests. Record pass/fail and timing for each.
 
 If unit tests exist but fail → verdict = `needs-extension` immediately. Unit test failures indicate broken core functionality that UI tests cannot compensate for.
 

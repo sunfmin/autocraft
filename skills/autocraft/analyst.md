@@ -108,14 +108,24 @@ When the human provides feedback during or after the build loop, classify it and
 - **important** — feature is wrong or degraded but app still runs. Should be fixed before next `polished` verdict.
 - **nice-to-have** — polish, aesthetics, minor UX improvements. Can wait until current journey is done.
 
-## Analyst Step 4: Present to Human for Confirmation
+## Analyst Step 4: Present to Human for Confirmation (or Proceed Autonomously)
 
-Before the Orchestrator acts on new or updated specs:
+**Autonomous execution rule:** When the next step is obvious — clear bug fix, straightforward spec addition, unambiguous feedback routing — proceed without asking. Show the diff briefly and move on. Only ask for confirmation when:
+- The human's intent is genuinely ambiguous
+- A spec change removes or weakens existing criteria
+- Multiple conflicting interpretations are possible
+
+For obvious cases:
+
+1. **Show the spec diff briefly** — display what was added or changed
+2. **Proceed immediately** — the Orchestrator will read the updated `spec.md` and `.autocraft/feedback-log.md` when you return
+
+For ambiguous cases:
 
 1. **Show the spec diff** — display exactly what was added or changed in spec.md
 2. **Show routed feedback** — display which feedback items are going to which agents
 3. **Ask for confirmation** — "Does this capture what you want? Anything to add or change?"
-4. **Only after human confirms** — the Analyst's job is done. The Orchestrator (which spawned you) will read the updated `spec.md` and `.autocraft/feedback-log.md` when you return. No special signal needed — completing your agent run IS the signal.
+4. **Only after human confirms** — the Analyst's job is done
 
 ## Analyst Step 5: Mid-Loop Feedback Injection
 

@@ -161,7 +161,17 @@ Flags that bypass real processing are BANNED. The playbook lists platform-specif
 
 ## Tester Step 4: Run ALL Tests + Verify
 
-Run **ALL** tests with **full output streaming** — never filter, pipe, or suppress test output.
+Run **ALL** tests with **full output streaming — ZERO TOLERANCE FOR PIPING.**
+
+**BANNED patterns — using any of these will get you re-launched:**
+- `xcodebuild test ... 2>&1 | grep -E "Test Case|FAIL"` ← BANNED
+- `xcodebuild test ... 2>&1 | tail -20` ← BANNED
+- `pytest ... | grep PASSED` ← BANNED
+- `npm test 2>&1 | head -50` ← BANNED
+
+**Required pattern:**
+- Run `xcodebuild test-without-building -scheme X -destination 'platform=macOS' -only-testing:TargetName` DIRECTLY with no pipes.
+- If output is too verbose for your context, spawn a **sub-agent** to run the command. The sub-agent absorbs the full output and returns: test count, pass/fail, error messages if any.
 
 **CRITICAL: Do not skip any tests.** Every test runs every time. If a test takes 60+ seconds, that's acceptable — it's proving real functionality. Never skip a test just because it's slow.
 
@@ -188,3 +198,5 @@ Set status to **`needs-review`**. NEVER set `polished`.
 - **The contract is non-negotiable** — if it says behavioral, prove behavior. If a prerequisite fails, FAIL. Never work around the contract.
 - **Run ALL tests after writing — no exceptions, no skips**
 - **Prefer integrated scenario tests over small unit tests** — consolidate when possible
+- **Act autonomously on obvious gaps** — if a test fails and the fix is obvious, fix it immediately without asking. Only escalate when you're genuinely stuck.
+- **NEVER pipe test output** — run test commands directly. Use sub-agents for verbose output isolation. See "Tester Step 4" for banned patterns.

@@ -144,6 +144,26 @@ Default registry gist: `bca7073d567ca8b7ba79ff4bad5fb2c5`. Override via `.autocr
 
 You are the skeptical project manager. You don't write code. You don't review screenshots. You manage handoffs and ensure neither the Builder, Tester, nor Inspector cuts corners. You commit ONLY when the Inspector approves.
 
+## Mandatory Agent Launch Directives
+
+**Every time you spawn a Builder, Tester, or Inspector agent, include these directives in the agent's prompt.** These are non-negotiable — agents forget rules they don't see in their own prompt.
+
+> **OUTPUT STREAMING — ZERO TOLERANCE FOR PIPING:**
+> When running build or test commands (xcodebuild, npm, cargo, pytest, etc.):
+> - Run commands DIRECTLY with NO pipes. Never use `| tail`, `| grep`, `| head`, or any filter.
+> - If output is too verbose, spawn a **sub-agent** to run the command. The sub-agent absorbs output and returns pass/fail + error details.
+> - `xcodebuild test ... 2>&1 | grep FAIL` is BANNED. Run `xcodebuild test ...` directly.
+> - `xcodebuild build ... 2>&1 | tail -20` is BANNED. Run `xcodebuild build ...` directly.
+> - Grepping static files for code scanning is fine. This rule applies to LONG-RUNNING PROCESS OUTPUT only.
+>
+> **ALWAYS RUN ALL TESTS:**
+> After every code change, run ALL tests with full output. Fix failures before reporting done. Never commit untested code. Never skip slow tests.
+>
+> **AUTONOMOUS EXECUTION:**
+> When the next step is obvious (clear gap, failing test, missing implementation), proceed immediately. Do not ask the Orchestrator or human for confirmation on obvious actions.
+
+**The Orchestrator itself must also follow these rules** when running post-gate checks, compliance scans, or any build/test commands.
+
 **Analyst integration — MANDATORY:** Every invocation where `$ARGUMENTS` contains natural language (not a file path or "continue") MUST launch the Analyst FIRST. The Analyst logs feedback to `.autocraft/feedback-log.md` and optionally updates `spec.md`. The Orchestrator MUST NOT skip the Analyst and go directly to the Builder when the user provides feedback. During the loop, check `.autocraft/feedback-log.md` at every handoff point for new entries. Route feedback items to the appropriate agent as part of their next launch directive.
 
 ```dot
@@ -357,11 +377,12 @@ If any scan is not CLEAN: include in Builder's directive as **first priority to 
 
 Spawn a background Agent with:
 1. [builder.md](builder.md) contents
-2. Directive to read `AGENTS.md` and `.autocraft/playbook-rules.md` (agents read these files themselves — the harness auto-loads `AGENTS.md`, and the agent reads `.autocraft/playbook-rules.md` per Step 0)
-3. `.autocraft/role-builder.md` content (role-specific playbook, cached locally)
-4. Current `.autocraft/journey-state.md`
-5. Directive: which journey to build/extend, plus any simulation fixes from Step 4
-6. Any **Builder-routed feedback** from `.autocraft/feedback-log.md` (unresolved items where `Routed to: Builder`)
+2. **Mandatory Agent Launch Directives** (from above — output streaming, always run tests, autonomous execution)
+3. Directive to read `AGENTS.md` and `.autocraft/playbook-rules.md` (agents read these files themselves — the harness auto-loads `AGENTS.md`, and the agent reads `.autocraft/playbook-rules.md` per Step 0)
+4. `.autocraft/role-builder.md` content (role-specific playbook, cached locally)
+5. Current `.autocraft/journey-state.md`
+6. Directive: which journey to build/extend, plus any simulation fixes from Step 4
+7. Any **Builder-routed feedback** from `.autocraft/feedback-log.md` (unresolved items where `Routed to: Builder`)
 
 The Builder implements production features and creates the journey directory, but does NOT write test files.
 
@@ -505,15 +526,16 @@ Write to `.autocraft/journeys/{NNN}-{name}/integration-test-contract.md`:
 
 After the test contracts are written, spawn a background Tester Agent with:
 1. [tester.md](tester.md) contents
-2. Directive to read `AGENTS.md` and `.autocraft/playbook-rules.md` (same as Builder — harness auto-loads `AGENTS.md`, agent reads playbook rules per Step 0)
-3. `.autocraft/role-tester.md` content (role-specific playbook, cached locally)
-4. The spec file path
-5. **The UI test contract** (`.autocraft/journeys/{NNN}-{name}/test-contract.md`)
-6. **The integration test contract** (`.autocraft/journeys/{NNN}-{name}/integration-test-contract.md`) if it exists
-7. The Builder's report (accessibility identifiers, testability notes, integration boundaries)
-8. Directive: implement and run integration tests first, then UI tests
-9. If this is a re-launch after rejection: include the specific failure list with line numbers
-10. Any **Tester-routed feedback** from `.autocraft/feedback-log.md` (unresolved items where `Routed to: Tester`)
+2. **Mandatory Agent Launch Directives** (from above — output streaming, always run tests, autonomous execution)
+3. Directive to read `AGENTS.md` and `.autocraft/playbook-rules.md` (same as Builder — harness auto-loads `AGENTS.md`, agent reads playbook rules per Step 0)
+4. `.autocraft/role-tester.md` content (role-specific playbook, cached locally)
+5. The spec file path
+6. **The UI test contract** (`.autocraft/journeys/{NNN}-{name}/test-contract.md`)
+7. **The integration test contract** (`.autocraft/journeys/{NNN}-{name}/integration-test-contract.md`) if it exists
+8. The Builder's report (accessibility identifiers, testability notes, integration boundaries)
+9. Directive: implement and run integration tests first, then UI tests
+10. If this is a re-launch after rejection: include the specific failure list with line numbers
+11. Any **Tester-routed feedback** from `.autocraft/feedback-log.md` (unresolved items where `Routed to: Tester`)
 
 **Timing Watcher (UI mode only)** — in `integration` mode, skip the watcher entirely. In `ui` mode, poll `screenshot-timing.jsonl` every 5s, kill test on unexcused SLOW entries:
 
@@ -563,7 +585,8 @@ If ANY check fails: **re-launch the Tester immediately** with the specific viola
 
 After Tester finishes, spawn an Inspector Agent with:
 1. [inspector.md](inspector.md) contents
-2. The spec file path
+2. **Mandatory Agent Launch Directives** (from above — output streaming, always run tests, autonomous execution)
+3. The spec file path
 3. Directive: evaluate the most recent journey
 4. **Project mode** — tell the Inspector whether this is `ui` or `integration` mode
 5. In `ui` mode: if the `/frontend-design` skill is installed, invoke it and include its output for design principles during screenshot review
@@ -632,6 +655,9 @@ Usage patterns and code examples are documented in the playbook template entry.
 | Builder and Tester both try to modify the same file | Enforce role separation — Builder writes production code, Tester writes test code only |
 | Loop stalls with no progress for multiple iterations | Check stall detection — if Builder/Tester produce no changes for 2 iterations, re-launch with Inspector's last failure list |
 | Playbook gist update fails with 403/404 | Auto-fork triggers automatically — see [playbooks.md](playbooks.md) |
+| Agent pipes build/test output through `grep`/`tail`/`head` | Include the "Mandatory Agent Launch Directives" in every agent prompt. The rule exists in SKILL.md but agents can't see it unless you put it in their prompt. |
+| Agent asks for confirmation on obvious next steps | Include the "AUTONOMOUS EXECUTION" directive. Only ask when there's genuine ambiguity about direction or priority. |
+| Builder commits code without running tests | Include "ALWAYS RUN ALL TESTS" directive. Tests must pass before Builder reports done. |
 
 ---
 

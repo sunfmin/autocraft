@@ -88,7 +88,13 @@ Output a report with these sections — the Orchestrator uses this to generate t
 
 ## Builder Rules
 
-- **Stream all build output** — never suppress compiler/bundler output with `tail`, `grep`, or `head`. Build errors must be visible immediately, not after a 60-second wait.
+- **Stream all build output — ZERO TOLERANCE FOR PIPING.** Never suppress compiler/bundler output with `| tail`, `| grep`, or `| head`. Run commands directly. If output is too verbose, spawn a sub-agent to run the command and return pass/fail + error. These are all BANNED:
+  - `xcodebuild build ... 2>&1 | tail -20` ← BANNED
+  - `xcodebuild test ... 2>&1 | grep -E "FAIL|error"` ← BANNED
+  - `npm run build | head -50` ← BANNED
+  - Instead: run `xcodebuild build ...` directly, or delegate to a sub-agent.
+- **Always run ALL tests after code changes** — build + run full test suite + fix failures BEFORE reporting done. Never hand off untested code to the Tester.
+- **Act autonomously on obvious gaps** — if something is clearly broken or missing, fix it without asking. Only ask when there's genuine ambiguity.
 - One journey at a time
 - Fix before moving on — never skip broken features
 - Every interactive UI element must have a **test identifier** (the playbook specifies the platform's identifier mechanism)
