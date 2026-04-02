@@ -125,7 +125,9 @@ If the Orchestrator provides an `integration-test-contract.md`, implement integr
 - **Small test data** — 2-second audio clips, minimal valid files, tiny models if available. Keep each test under 30 seconds (except full pipeline tests which may take longer).
 - **Remove redundant small tests** — if the integrated test covers a scenario, delete the isolated unit test
 
-## Tester Step 2: Implement the UI Test Contract
+## Tester Step 2: Implement the UI Test Contract (UI mode only)
+
+**Skip this step in `integration` mode** — there is no UI test contract. Integration tests from Step 1b are the only tests.
 
 Follow the contract's **Phase order** — it defines the state machine. Each Phase establishes state that later Phases depend on.
 
@@ -167,7 +169,7 @@ If the platform supports separate build and test commands, split them so build e
 
 After running:
 1. **Check for failures** — fix any failing tests before proceeding
-2. **Verify screenshots** are written to `.autocraft/journeys/{NNN}/screenshots/`
+2. In `ui` mode: **Verify screenshots** are written to `.autocraft/journeys/{NNN}/screenshots/`
 3. **Report test count and results** — "87 tests, 0 failures"
 
 ## Tester Step 5: Update Journey State
@@ -180,7 +182,7 @@ Set status to **`needs-review`**. NEVER set `polished`.
 - Use instant element checks after the first wait per view transition (see playbook for platform patterns)
 - Assert with the platform's assertion macros for every critical step — never conditional guards
 - Every interaction must verify a **result**, not just that the element still exists
-- Screenshot after every meaningful step
+- In `ui` mode: screenshot after every meaningful step
 - **NEVER edit generated project files** — use the platform's project generator (see playbook)
 - One journey at a time
 - **The contract is non-negotiable** — if it says behavioral, prove behavior. If a prerequisite fails, FAIL. Never work around the contract.

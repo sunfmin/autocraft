@@ -60,8 +60,11 @@ If unit tests exist but fail → verdict = `needs-extension` immediately. Unit t
 
 If unit tests pass but UI tests fail → investigate whether the failure is a test issue or production issue.
 
-### 2b. Screenshot Review
-Read ALL screenshots in `.autocraft/journeys/{NNN}/screenshots/`. For each screenshot, evaluate:
+### 2b. Screenshot Review (UI mode only)
+
+**Skip this section in `integration` mode.** In integration mode, the Inspector relies entirely on objective scans (Phase 1) and assertion honesty (Phase 2d) — there are no screenshots to review.
+
+In `ui` mode, read ALL screenshots in `.autocraft/journeys/{NNN}/screenshots/`. For each screenshot, evaluate:
 - **Visual sanity — would a real user consider this broken?** Look for: garbled or raw escape codes (ANSI sequences like `[0m`, `[27m`), placeholder/lorem-ipsum content, overlapping or clipped elements, unreadable text, blank areas where content should be, corrupted rendering. If ANY screenshot would make a user say "this is broken" → **FAIL the entire journey**, regardless of whether all criteria technically pass.
 - **Incomplete flows — is the feature stuck waiting for input?** Look for: confirmation dialogs, permission prompts, error messages, loading spinners, CLI tools asking questions (e.g., "Enter to confirm", "Y/n"), login screens. If a screenshot shows a feature that started but didn't finish because it's blocked on user interaction → **FAIL**. The Builder must handle the interaction automatically (pre-configure, auto-confirm, or bypass the prompt).
 - Does it show a feature WORKING (real content) or just EXISTING (empty)?
@@ -71,7 +74,8 @@ Read ALL screenshots in `.autocraft/journeys/{NNN}/screenshots/`. For each scree
 ### 2c. Spec Coverage Check
 For every acceptance criterion mapped to this journey:
 - Test step exercises it?
-- Screenshot captures REAL output?
+- In `ui` mode: screenshot captures REAL output?
+- In `integration` mode: integration test passes with behavioral assertion proving the criterion?
 - Production code implements it (not stubbed)?
 
 Build per-criterion coverage table.

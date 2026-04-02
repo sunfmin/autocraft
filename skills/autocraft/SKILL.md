@@ -3,7 +3,8 @@ name: autocraft
 description: >
   Use when the user says "autocraft", "build journeys", "test the spec", or "cover my spec".
   Also use when the user has a spec.md and wants automated implementation with real output
-  verification, or when building UI features that need screenshot-verified acceptance criteria.
+  verification. Supports UI projects (screenshot-verified), integration-only projects
+  (pipeline-verified), and test refactoring tasks.
   Use "autocraft init" to install the always-on Analyst into a project via CLAUDE.md.
 argument-hint: "[spec-file-path | init]"
 ---
@@ -30,24 +31,48 @@ The **Tester** writes journey tests but CANNOT modify production code. They only
 The **Inspector** verifies output with automated scans and subjective review. Only the Inspector can set "polished." → [inspector.md](inspector.md)
 The **Orchestrator** manages handoffs and commits only when the Inspector approves. → below
 
-**Why this separation matters:** A builder who writes their own tests optimizes for tests that pass — not for tests that prove features work. They know the button is wired up, so they assert it exists and move on. A separate tester doesn't know the internals. They read the spec, click the button, and check what happened. If nothing happened, they write a failing test — and the builder has to make it pass.
+**Why this separation matters:** A builder who writes their own tests optimizes for tests that pass — not for tests that prove features work. In UI projects, they know the button is wired up, so they assert it exists and move on. In integration projects, they know the function returns data, so they assert non-nil and move on. A separate tester doesn't know the internals. They read the contract, exercise the pipeline, and check what came out. If the output is wrong, they write a failing test — and the builder has to make it pass.
 
 ---
 
 ## When to Use
 
 - Building a new app or feature set from a spec with multiple acceptance criteria
-- You want automated, screenshot-verified proof that every criterion is met
+- You want automated, verified proof that every criterion is met (screenshots for UI projects, test results for integration-only projects)
 - The project needs real implementations (not stubs) with independent test verification
+- Consolidating or refactoring tests into scenario-based integration tests
+- Building or testing CLI tools, libraries, or APIs where data pipeline correctness matters
 - You have a `spec.md` (or gist) describing requirements and acceptance criteria
 
 ## When NOT to Use
 
 - **Single-file bug fixes** — just fix the bug directly, autocraft is overkill
-- **Pure refactoring** with no user-visible behavior change — no acceptance criteria to verify
-- **Projects without UI** (CLI tools, libraries, APIs) — autocraft's screenshot verification assumes a GUI
 - **Quick prototyping** where stubs are acceptable — autocraft enforces real implementations
 - **No spec yet and you're not ready to write one** — start with the Analyst step or write spec.md first
+
+## Project Mode
+
+The Orchestrator detects the project mode at startup and records it in `.autocraft/journey-loop-state.md`:
+
+| Mode | When | UI test contract | Integration test contract | Screenshots |
+|------|------|-----------------|--------------------------|-------------|
+| `ui` | Project has a UI framework AND spec describes user-visible behavior | Yes | Optional (when silent failure risks detected) | Required |
+| `integration` | No UI, or spec describes data pipelines, APIs, test refactoring, or library behavior | No | Yes (primary contract) | Not required |
+
+**Detection rules (in order):**
+1. If `spec.md` contains `mode: integration` or `mode: ui` in frontmatter → use that
+2. If the task is test refactoring (spec describes reorganizing, consolidating, or improving tests) → `integration`
+3. If the project has no UI framework and no UI test target → `integration`
+4. Otherwise → `ui`
+
+**What changes in `integration` mode:**
+- Step 5 (Builder): **skipped entirely** if no production code changes are needed (e.g., pure test refactoring)
+- Step 6 (UI test contract): **skipped**
+- Step 7 (integration test contract): **always generated** — this is the primary contract
+- Step 8 (Tester): Timing Watcher is **skipped** (no screenshots to time)
+- Step 9 (contract compliance): validates integration contract only
+- Step 10 (Inspector): **skips screenshot review**, focuses on objective scans + test quality + assertion honesty
+- Step 12 (pre-stop audit): checks test step exists + passes (no screenshot requirement)
 
 ---
 
@@ -328,6 +353,8 @@ If any scan is not CLEAN: include in Builder's directive as **first priority to 
 
 ## Step 5: Launch Builder Agent (background)
 
+**Integration mode — Builder skip:** If the project mode is `integration` AND no production code changes are needed (e.g., pure test refactoring, test consolidation), skip this step entirely and proceed to Step 7. Record in `.autocraft/journey-loop-state.md`: `Builder: skipped (no production code changes needed)`.
+
 Spawn a background Agent with:
 1. [builder.md](builder.md) contents
 2. Directive to read `AGENTS.md` and `.autocraft/playbook-rules.md` (agents read these files themselves — the harness auto-loads `AGENTS.md`, and the agent reads `.autocraft/playbook-rules.md` per Step 0)
@@ -350,7 +377,9 @@ After the Builder completes, verify it followed the rules in `AGENTS.md`. Run th
 
 If ANY violation: **re-launch the Builder** with the specific violation and directive to read `AGENTS.md` and fix it.
 
-## Step 6: Generate Test Contract (Orchestrator does this — NOT the Tester)
+## Step 6: Generate UI Test Contract (UI mode only)
+
+**Skip this step in `integration` mode** — proceed directly to Step 7.
 
 **This is the critical structural step.** The Orchestrator — not the Tester — defines what the test must prove. The Tester only implements it.
 
@@ -388,20 +417,24 @@ Phase 3: [state after action Y] — depends on Phase 2
 3. The Orchestrator must think adversarially: "If the Builder left the handler empty but kept the UI element, would this assertion catch it?" If not, strengthen the assertion.
 4. Every `behavioral` criterion MUST have an ASSERT_CONTAINS that would FAIL if the action produced an error, a prompt, or any unintended intermediate state instead of the expected result. "Output changed" or "output is not empty" are NEVER sufficient for ASSERT_CONTAINS.
 
-## Step 7: Analyze for Integration Tests & Refactor if Needed
+## Step 7: Generate Integration Test Contract & Refactor if Needed
 
-After the Builder completes, the Orchestrator analyzes the new/modified code to decide if integration-level unit tests are needed. **Not every journey needs them.** UI tests cover user-visible behavior; integration tests cover "does the plumbing actually work."
+**In `integration` mode:** This step is ALWAYS executed — the integration test contract is the primary (and only) test contract. Analyze existing code and tests to generate scenario-based integration test contracts.
+
+**In `ui` mode:** This step is conditional. After the Builder completes, the Orchestrator analyzes the new/modified code to decide if integration-level tests are needed in addition to UI tests. Not every journey needs them — UI tests cover user-visible behavior; integration tests cover "does the plumbing actually work."
 
 ### When to generate integration tests
 
-Scan the Builder's code for **silent failure risks** — things that break without UI tests catching it:
+**In `integration` mode:** Always. Scan the existing code to identify all testable pipelines.
+
+**In `ui` mode:** Scan the Builder's code for **silent failure risks** — things that break without UI tests catching it:
 
 - **External dependency** — C/FFI, vendored libs, model loading: links at build time but may crash/nil at runtime
 - **Data pipeline with file I/O** — output file exists but contains garbage (wrong format, corrupted)
 - **Multi-stage handoff** — A→B→C where the handoff silently drops data
 - **Format conversion** — resampling, encoding, serialization where content is wrong but file looks valid
 
-If none of these patterns are present (pure UI, layout, cosmetic), skip this step.
+If none of these patterns are present (pure UI, layout, cosmetic), skip this step in `ui` mode.
 
 ### Analysis process
 
@@ -482,7 +515,7 @@ After the test contracts are written, spawn a background Tester Agent with:
 9. If this is a re-launch after rejection: include the specific failure list with line numbers
 10. Any **Tester-routed feedback** from `.autocraft/feedback-log.md` (unresolved items where `Routed to: Tester`)
 
-**Also launch the Timing Watcher** — poll `screenshot-timing.jsonl` every 5s, kill test on unexcused SLOW entries:
+**Timing Watcher (UI mode only)** — in `integration` mode, skip the watcher entirely. In `ui` mode, poll `screenshot-timing.jsonl` every 5s, kill test on unexcused SLOW entries:
 
 ```bash
 TIMING_FILE=".autocraft/journeys/{NNN}-{name}/screenshot-timing.jsonl"
@@ -532,7 +565,9 @@ After Tester finishes, spawn an Inspector Agent with:
 1. [inspector.md](inspector.md) contents
 2. The spec file path
 3. Directive: evaluate the most recent journey
-4. If the `/frontend-design` skill is installed, invoke it and include its output in the Inspector's prompt for design principles during screenshot review (optional — skip if not available)
+4. **Project mode** — tell the Inspector whether this is `ui` or `integration` mode
+5. In `ui` mode: if the `/frontend-design` skill is installed, invoke it and include its output for design principles during screenshot review
+6. In `integration` mode: tell the Inspector to skip screenshot review and focus on objective scans, test quality, and assertion honesty
 
 Wait for Inspector verdict.
 
@@ -550,7 +585,7 @@ Wait for Inspector verdict.
    - Production code issue (feature doesn't work, stub, missing implementation) → re-launch **Builder**
    - Test issue (existence-only assertion, missing interaction, wrong verification) → **update the test contract** to strengthen the failing assertions, then re-launch **Tester** with the updated contract + Inspector's failure list
    - Both → re-launch Builder first, then update contract + re-launch Tester
-   - Visual/UX issue (garbled rendering, incomplete flow, broken layout visible in screenshots) → re-launch **Builder** with the specific screenshot and failure description. The Builder must fix the root cause (e.g., use a proper rendering library, pre-configure interactive tools, handle prompts automatically).
+   - Visual/UX issue (garbled rendering, incomplete flow, broken layout visible in screenshots — `ui` mode only) → re-launch **Builder** with the specific screenshot and failure description. The Builder must fix the root cause (e.g., use a proper rendering library, pre-configure interactive tools, handle prompts automatically).
 4. When updating the contract after Inspector rejection:
    - For each failed criterion, tighten the ASSERT to make the failure structurally impossible (e.g., if the Tester used `.exists` where the contract said `behavioral`, add an explicit example assertion to the contract)
    - Add any missing FAIL_IF_BLOCKED messages the Inspector identified
@@ -559,9 +594,9 @@ Wait for Inspector verdict.
 ## Step 12: Pre-Stop Audit (when score >= 90% or all journeys polished)
 
 1. Read the Acceptance Criteria Master List (M rows)
-2. For each criterion: confirm journey maps it + test step exists + screenshot exists
+2. For each criterion: confirm journey maps it + test step exists + (`ui` mode: screenshot exists, `integration` mode: test passes)
 3. Build audit table with VERDICT column
-4. If uncovered > 0: do NOT stop. Re-launch Builder for gaps.
+4. If uncovered > 0: do NOT stop. Re-launch Builder (or Tester in `integration` mode) for gaps.
 5. Stop ONLY when: score >= 95% AND 0 uncovered AND all journeys `polished` by Inspector
 
 ## Stop Condition
@@ -571,6 +606,8 @@ ALL of:
 - All journeys set to `polished` by Inspector (not by Builder)
 - Pre-stop audit: 0 uncovered criteria
 - All objective scans pass (no bypass flags, no stubs, no empty artifacts)
+- `ui` mode: all criteria have screenshot evidence
+- `integration` mode: all integration tests pass with behavioral assertions
 
 ---
 
@@ -590,7 +627,7 @@ Usage patterns and code examples are documented in the playbook template entry.
 | Mistake | Fix |
 |---------|-----|
 | Builder keeps getting re-launched because test contract assertions are too strict for the current implementation stage | Orchestrator should write contracts that match what's actually testable now, then tighten in later iterations |
-| Inspector rejects because screenshots show permission dialogs | Run `/preflight-permissions` first to grant all TCC permissions |
+| Inspector rejects because screenshots show permission dialogs (UI mode) | Run `/preflight-permissions` first to grant all TCC permissions |
 | Tester writes existence-only assertions (`.exists`) for behavioral criteria | Orchestrator's contract compliance check (Step 9) should catch this before Inspector — if it doesn't, tighten the contract |
 | Builder and Tester both try to modify the same file | Enforce role separation — Builder writes production code, Tester writes test code only |
 | Loop stalls with no progress for multiple iterations | Check stall detection — if Builder/Tester produce no changes for 2 iterations, re-launch with Inspector's last failure list |

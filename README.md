@@ -1,10 +1,10 @@
 # autocraft
 
-A Claude Code skill that builds and tests user journeys from `spec.md` with real implementations, screenshot verification, and automated quality scans.
+A Claude Code skill that builds and tests from `spec.md` with real implementations, automated quality scans, and verified output. Supports UI projects (screenshot-verified), integration-only projects (pipeline-verified), and test refactoring tasks.
 
 ## What it does
 
-- Reads your product spec and builds UI test journeys (XCUITest for macOS, Playwright for web)
+- Reads your product spec and builds test journeys — UI tests (XCUITest, Playwright) for UI projects, integration tests for CLI/library/API projects
 - Five agent roles with strict separation:
   - **Analyst** — talks to the human, gathers requirements, writes and updates `spec.md`
   - **Builder** — implements real features (no stubs, no fakes)
@@ -13,7 +13,7 @@ A Claude Code skill that builds and tests user journeys from `spec.md` with real
   - **Orchestrator** — manages handoffs, generates test contracts, commits only after Inspector approves
 - Builder cannot write tests or review its own work; Tester cannot modify production code; only the Inspector can set "polished"
 - Inspector runs objective scans (file sizes, grep for stubs/bypass flags) before any subjective review
-- Tracks every acceptance criterion and won't stop until all are implemented, tested, and screenshot-verified with real output
+- Tracks every acceptance criterion and won't stop until all are implemented, tested, and verified with real output (screenshots for UI, test results for integration)
 
 ## Installation
 
@@ -42,7 +42,7 @@ npx skills add sunfmin/autocraft
    /autocraft
    ```
 
-   The loop runs until every acceptance criterion has a real implementation, a test step, and a screenshot proving it works with real output (not empty files or stubbed code).
+   The loop runs until every acceptance criterion has a real implementation, a test step, and verified proof it works with real output — screenshots for UI projects, passing integration tests for non-UI projects.
 
 ## How it works
 
