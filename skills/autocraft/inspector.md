@@ -23,26 +23,27 @@ You trust objective evidence (file sizes, grep results, behavioral verification)
 
 These produce PASS/FAIL. They cannot be gamed. The playbook provides the exact commands for each scan (`role-inspector-{platform}.md`).
 
-| Scan | What it checks | Scope | FAIL means |
-|------|---------------|-------|-----------|
-| Output Artifacts | Real output files exist and are non-empty | Production output | Feature produced empty output |
-| Bypass Flags | No test-only flags that skip real code paths | UI + integration tests | Test bypasses real functionality |
-| Stub Functions | No production functions that only return empty values | Production code | Feature is faked |
-| Vacuous Assertions | No assertions that accept both success and failure | **UI + integration tests** | Test proves nothing |
-| Screenshot Presence (UI mode) | Every contract SCREENSHOT has a capture call in the test | UI test files | Screenshot evidence missing |
-| Silent Skip Guards | No conditional patterns that skip assertions without explicit failure | UI + integration tests | Mandatory criterion silently skipped |
+| # | Scan | What it checks | Scope | FAIL means |
+|---|------|---------------|-------|-----------|
+| 1 | Output Artifacts | Real output files exist and are non-empty | Production output | Feature produced empty output |
+| 2 | Bypass Flags | No test-only flags that skip real code paths | UI + integration tests | Test bypasses real functionality |
+| 3 | Stub Functions | No production functions that only return empty values | Production code | Feature is faked |
+| 4 | Vacuous Assertions | No assertions that accept both success and failure | UI + integration tests | Test proves nothing |
+| 5 | "Show Me" Test | Test performs the criterion's action AND verifies the result (not just `.exists`) | UI + integration tests | Criterion not actually exercised |
+| 6 | Screenshot Presence (UI mode) | Every contract SCREENSHOT has a capture call in the test | UI test files | Screenshot evidence missing |
+| 7 | Silent Skip Guards | No conditional patterns that skip assertions without explicit failure | UI + integration tests | Mandatory criterion silently skipped |
 
-**Important:** Scans 2, 4, and 7 must cover BOTH UI test files AND integration test files. An integration test that calls a pipeline but only asserts the output is non-nil (without checking content) is vacuous. A test that wraps an assertion inside a conditional check (without failing on the false branch) makes a mandatory criterion optional.
+**Important:** Scans 2, 4, 5, and 7 must cover BOTH UI test files AND integration test files.
 
 ### Scan 5 — "Show Me" Test
 For every acceptance criterion: find the verb (sends, opens, seeks, configures...), then verify the test **performs that action AND checks the result**. If the test only asserts `.exists` or `.isEnabled` on an element whose criterion describes an action, that criterion is **not covered**.
 
 ### Scan Enforcement
-- **ANY Scan 1 or Scan 2 failure**: verdict = `needs-extension`, score = 0%. No exceptions.
-- **Scan 3 or 4 failures**: verdict = `needs-extension`, specific fixes listed.
-- **Any Scan 5 failure**: verdict = `needs-extension`. List uncovered criteria with what's missing (the verb that was never performed).
-- **Scan 6 failure (Screenshot Presence)**: verdict = `needs-extension`. List missing screenshot capture calls with the expected names from the contract.
-- **Scan 7 failure (Silent Skip Guards)**: verdict = `needs-extension`. List specific lines where assertions are wrapped in conditional patterns without explicit failure on the false branch.
+- **Scan 1 or 2 failure**: verdict = `needs-extension`, score = 0%. No exceptions.
+- **Scan 3 or 4 failure**: verdict = `needs-extension`, specific fixes listed.
+- **Scan 5 failure**: verdict = `needs-extension`. List uncovered criteria with the verb that was never performed.
+- **Scan 6 failure**: verdict = `needs-extension`. List missing screenshot capture calls.
+- **Scan 7 failure**: verdict = `needs-extension`. List specific lines where assertions are wrapped in conditional patterns.
 - **ALL scans pass**: proceed to Phase 2.
 
 ## Inspector Phase 2: Subjective Assessment

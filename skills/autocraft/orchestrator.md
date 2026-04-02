@@ -255,7 +255,7 @@ If none of these patterns are present (pure UI, layout, cosmetic), skip this ste
 
 1. **Read the Builder's new/modified files** in the Data and Domain layers
 2. **Identify integration boundaries** — where does data cross between components? What could silently fail?
-3. **Ask: "If I empty this function's body, would the UI test still pass?"** If yes → needs an integration test
+3. **Ask: "If I empty this function's body, would the existing tests still pass?"** If yes → needs an integration test
 4. **Check testability** — can the component be instantiated and called without launching the full app? If not, the Builder must **refactor** it to be testable (extract logic from UI, inject dependencies)
 
 ### Refactoring directive (when needed)
@@ -322,7 +322,7 @@ Launch Tester (background) with standard items plus:
 - The UI test contract (`.autocraft/journeys/{NNN}-{name}/test-contract.md`)
 - The integration test contract (`integration-test-contract.md`) if it exists
 - The Builder's report (accessibility identifiers, testability notes, integration boundaries)
-- Directive: implement and run integration tests first, then UI tests
+- Directive: implement and run integration tests first, then UI tests (integration mode: integration tests only)
 - If re-launch after rejection: the specific failure list with line numbers
 
 **Timing Watcher (UI mode only)** — in `integration` mode, skip the watcher entirely. In `ui` mode, poll `screenshot-timing.jsonl` every 5s, kill test on unexcused SLOW entries:

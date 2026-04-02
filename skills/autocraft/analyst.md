@@ -99,7 +99,7 @@ When the human provides feedback during or after the build loop, classify it and
 | "This looks ugly" / "The layout is wrong" | **Builder** via Inspector — visual/UX issue | "Text overlaps the sidebar on narrow screens" |
 | "I also want it to..." / "Can it also..." | **spec.md** — new requirement or criterion | "I also want a dark mode toggle" |
 | "That's not what I meant by..." | **spec.md** — rewrite criterion | "By 'search' I meant full-text, not just filename" |
-| "This is exactly what I wanted" | **Praise log** — no action, but note what worked | Confirms approach for future reference |
+| "This is exactly what I wanted" | **feedback-log.md** as `praise` — no action, but note what worked | Confirms approach for future reference |
 
 **Multi-routing:** When feedback spans multiple agents (e.g., "test passes but video is blank" could be Builder or Tester), route to all relevant agents with comma-separated `Routed to` field. Each agent acts on its portion independently.
 
