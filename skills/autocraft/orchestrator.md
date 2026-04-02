@@ -164,7 +164,7 @@ If any scan is not CLEAN: include in Builder's directive as **first priority to 
 Every agent launch includes these **standard items** in the prompt:
 1. Agent role instructions ([builder.md](builder.md), [tester.md](tester.md), or [inspector.md](inspector.md))
 2. Mandatory Agent Launch Directives (from above)
-3. Full playbook content — general rules + role-specific rules + templates (from Step 2)
+3. Full playbook content — general rules + role-specific rules (from Step 2). Templates (`template-*`) go to Tester only.
 4. Directive to read `AGENTS.md` for project-specific rules
 5. Current `.autocraft/journey-state.md`
 6. Any agent-routed feedback from `.autocraft/feedback-log.md`
@@ -177,6 +177,8 @@ Steps 5, 8, and 10 below list only the **additional items** specific to each age
 
 Launch Builder (background) with standard items plus:
 - Directive: which journey to build/extend, plus any simulation fixes from Step 4
+
+The Builder MUST output a report containing: accessibility identifiers, artifacts produced, testability notes (how to reach/verify each criterion), and integration boundaries. This report is included in the Tester's prompt (Step 8).
 
 Wait for Builder to complete.
 
