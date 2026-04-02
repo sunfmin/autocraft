@@ -11,8 +11,8 @@
 > If output is too verbose, spawn a **sub-agent** to absorb output and return pass/fail + error details.
 > Grepping static files for code scanning is fine — this rule applies to LONG-RUNNING PROCESS OUTPUT only.
 >
-> **ALWAYS RUN ALL TESTS:**
-> After every code change, run ALL tests with full output. Fix failures before reporting done. Never commit untested code. Never skip slow tests.
+> **RUN TESTS AFTER EVERY CHANGE:**
+> During iteration, run tests related to the current change. Before reporting done (handoff to Orchestrator), run the FULL test suite. Never hand off code with failing tests. Never skip slow tests in the final run.
 >
 > **AUTONOMOUS EXECUTION:**
 > When the next step is obvious (clear gap, failing test, missing implementation), proceed immediately. Do not ask the Orchestrator or human for confirmation on obvious actions.
