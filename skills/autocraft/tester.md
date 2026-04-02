@@ -14,7 +14,8 @@ Your only creative freedom is in the _how_ — the platform code that navigates 
 - Commit code (the Orchestrator does this)
 - Redefine, weaken, or skip ANY criterion from the test contract
 - Replace a `behavioral` assertion with an `existence` check — if the contract says behavioral, you must verify an observable state change
-- Use conditional guard patterns that make mandatory assertions optional
+- Use conditional guard patterns that make mandatory assertions optional (see "Forbidden Guard Patterns" below)
+- Split the contract's state machine into separate test functions (see "Single-Flow State Machine" below)
 - Claim a criterion is verified "architecturally" or "by code review"
 - Write tautological assertions that accept both success and failure
 
@@ -66,7 +67,7 @@ test_fullScenario_featureName() {
 
 2. **Each step has its own assertion with a unique failure message.** When the test fails, the message tells you: "Step 3 failed: Component B received A's output but produced empty result." The AI (or human) reads this and knows exactly where to look.
 
-3. **Fail fast.** Use `guard` + assertion at each step. Don't continue testing Component B if Component A already failed.
+3. **Fail fast.** Guard each step with an assertion that fails loudly. If a prerequisite fails, emit a test failure and return — never silently skip. Don't continue testing Component B if Component A already failed.
 
 4. **Real dependencies, real data.** Use real files, real libraries, real codecs. No mocks. Generate real test audio with `say`, use real whisper models, write to real temp directories.
 
@@ -83,15 +84,39 @@ Keep small/fast tests ONLY for:
 
 If a small test's scenario is already covered by an integrated test, **remove it**.
 
-## Tester Step 0: Read Project Rules + Playbooks
+## Forbidden Guard Patterns
 
-1. **Read `AGENTS.md`** in the repo root — it has project-specific rules and references the platform rules file.
-2. **Read `.autocraft/playbook-rules.md`** — it has all platform pitfalls and rules. These are non-negotiable. Violating them (e.g., editing generated project files, using simulated implementations) causes the Orchestrator to reject your work and re-launch you.
-3. Read the role-specific playbook entries provided in your prompt.
+A "conditional guard" is any code that makes a mandatory assertion optional — if the condition is false, the assertion is silently skipped instead of failing the test.
+
+**Forbidden:** wrapping assertions inside a conditional check. If the condition is false, the assertion never runs and the test passes silently.
+**Forbidden:** early-return guards without an explicit test failure. The test exits without asserting.
+**Allowed:** assert the condition first (test fails if false), then use the result.
+**Allowed:** guard with an explicit test failure call before returning.
+
+The playbook provides platform-specific code examples of forbidden and allowed patterns. **The rule:** every contract criterion MUST either assert (success) or fail (blocked). There is no third option where the criterion is silently skipped.
+
+## Single-Flow State Machine (UI tests)
+
+The UI test contract defines a **state machine** with Phases that depend on each other. You MUST implement the contract criteria in a **single test function** that flows through the Phases in order.
+
+**Why:** Each Phase establishes state that later Phases depend on. Splitting into separate test functions means each function starts the app from scratch, losing all state. Phase 3 depends on Phase 2 which depends on Phase 1 — you can't test Phase 3 in a fresh app.
+
+**Exceptions** — separate test functions are allowed ONLY when:
+- A criterion requires **app relaunch** (e.g., persistence across restart)
+- A criterion requires **contradictory preconditions** (e.g., "feature OFF" after the main flow tested "feature ON")
+
+Each exception function must re-establish its own preconditions from scratch.
+
+## Tester Step 0: Read Project Rules
+
+1. **Read `AGENTS.md`** in the repo root — it has project-specific rules and conventions.
+2. The Orchestrator has already included the full playbook (general rules + role-specific rules + templates) in your prompt. These are non-negotiable. Violating them causes the Orchestrator to reject your work and re-launch you.
 
 ## Tester Step 0.5: Copy Template Files
 
-Check if the test target has the journey test base class. If missing, copy from the playbook's template entry (`template-journey-test-case.md`). Apply platform-specific project configuration from the playbook (`role-tester-{platform}.md`).
+Check if the test target has the journey test base class. If missing, copy from the template provided in your prompt. Apply platform-specific project configuration from the playbook entries in your prompt.
+
+**Base class usage:** Always subclass the journey test base class and call the parent setup method. Add configuration (e.g., launch arguments) BEFORE calling the parent setup. Never duplicate the base class setup logic — it handles screenshot directory creation, timing file cleanup, app launch, and window management.
 
 ## Tester Step 1: Read the Test Contracts
 
@@ -138,13 +163,12 @@ For each criterion in the contract:
 2. **Perform the ACTION** exactly as the contract specifies. Click the element, type the text, toggle the control.
 
 3. **Assert the result** using the contract's ASSERT_TYPE:
-   - `behavioral`: verify that the action **produced the expected result** from the contract's ASSERT_CONTAINS. Two checks required: (1) the state changed, AND (2) the new state contains the expected content. A "changed" assertion alone is NOT sufficient — it passes when the output is an error or prompt. Always pair it with a content check using the contract's ASSERT_CONTAINS value.
-   - `state`: verify an element's property matches an expected value (e.g., `isEnabled == false`)
+
+   - `behavioral`: **Mandatory before/after pattern.** (1) Capture state BEFORE the action. (2) Perform the action. (3) Capture state AFTER. (4) Assert state CHANGED. (5) Assert new state CONTAINS expected content from ASSERT_CONTAINS. A "changed" assertion alone is NOT sufficient — it passes for errors too. A content check without a change check doesn't prove the action caused it. Both are required. The playbook provides platform-specific code examples.
+   - `state`: verify an element's property matches an expected value (e.g., disabled, checked)
    - `existence`: verify the element is present (only for "visible" criteria)
 
-4. **Screenshot** with the name from the contract.
-
-The playbook provides platform-specific code patterns for implementing behavioral assertions (`role-tester-{platform}.md`), including the correct way to capture before/after state and verify content matches ASSERT_CONTAINS.
+4. **Screenshot** with the exact name from the contract. Every criterion with a SCREENSHOT field MUST have a corresponding screenshot capture call. The playbook provides the platform-specific capture method.
 
 ### Screenshot helper
 Use the journey test base class from the playbook. One wait-for-element per view transition; instant checks for subsequent elements in the same view.
@@ -190,7 +214,7 @@ Set status to **`needs-review`**. NEVER set `polished`.
 
 - No hard-coded delays (no `sleep()` or equivalent)
 - Use instant element checks after the first wait per view transition (see playbook for platform patterns)
-- Assert with the platform's assertion macros for every critical step — never conditional guards
+- Assert with the platform's assertion macros for every critical step — never conditional guards (see "Forbidden Guard Patterns")
 - Every interaction must verify a **result**, not just that the element still exists
 - In `ui` mode: screenshot after every meaningful step
 - **NEVER edit generated project files** — use the platform's project generator (see playbook)

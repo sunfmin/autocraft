@@ -134,7 +134,7 @@ The Orchestrator detects the source type at startup and stores it in `.autocraft
 
 ## Playbooks
 
-Playbooks are shared, platform-specific knowledge bases stored as GitHub gists. Agents load the relevant playbook(s) at the start of every iteration.
+Playbooks are shared, platform-specific knowledge bases stored as GitHub gists. The Orchestrator fetches them once per invocation and injects the content directly into each agent's prompt (see Step 2).
 
 Default registry gist: `bca7073d567ca8b7ba79ff4bad5fb2c5`. Override via `.autocraft` file at repo root. See [playbooks.md](playbooks.md) for full registry management, CRUD commands, entry format, and auto-fork behavior.
 
@@ -243,101 +243,32 @@ digraph orchestrator_loop {
 ### Spec updates
 Only the Analyst can modify `spec.md`. When user feedback implies a spec change (new requirement, changed behavior, removed feature), the Analyst updates the spec AND logs to `.autocraft/feedback-log.md`. The Orchestrator re-reads the spec in Step 3 to pick up changes.
 
-## Step 2: Sync Playbooks (cached)
+## Step 2: Load Playbooks
 
-Playbooks are cached locally in `.autocraft/` to avoid re-fetching unchanged content every iteration.
+Playbooks are platform-specific knowledge bases stored as GitHub gists. The Orchestrator fetches them once per invocation and **injects the content directly into each agent's prompt** — no local caching, no file references.
 
-### File layout
+**Why direct injection:** Telling agents to "read file X" is unreliable — they may not read it, or read it but not internalize the rules. Injecting content into the prompt guarantees delivery.
 
-```
-.autocraft/
-├── playbook-rules.md          # Auto-generated: all pitfall/rule entries (NEVER hand-edit)
-├── role-builder.md             # Auto-generated: role-specific for Builder
-├── role-tester.md              # Auto-generated: role-specific for Tester
-├── role-inspector.md           # Auto-generated: role-specific for Inspector
-├── role-orchestrator.md        # Auto-generated: role-specific for Orchestrator
-└── templates/                  # Auto-generated: template files
-    └── journey-test-case.md
-```
-
-`AGENTS.md` (repo root) is **user-editable** — project-specific rules, conventions, notes. It should reference the playbook cache:
-
-```markdown
-# AGENTS.md
-
-{user's project-specific rules here}
-
-## Platform Rules
-Read and follow all rules in [.autocraft/playbook-rules.md](.autocraft/playbook-rules.md).
-```
-
-### Sync protocol
+### Fetch protocol
 
 1. Resolve the registry gist ID: read `.autocraft` from repo root if it exists, otherwise use default `bca7073d567ca8b7ba79ff4bad5fb2c5`.
-2. Fetch the registry to get playbook gist IDs.
-3. For each playbook gist, check if the local cache is current:
+2. Fetch the registry: `gh gist view <registry-id> -f playbooks.json`
+3. For each playbook gist, fetch ALL files: `gh gist view <gist-id> --files` then read each file.
+4. Categorize content by filename prefix:
 
-```bash
-REMOTE_TS=$(gh api /gists/<gist-id> --jq '.updated_at')
-LOCAL_TS=$(head -1 .autocraft/playbook-rules.md 2>/dev/null | grep -oP '(?<=playbook_updated: ).*' || echo "")
+| Prefix/pattern | Category | Included in |
+|---------------|----------|-------------|
+| No prefix (pitfalls, guides, rules) | General rules | ALL agent prompts |
+| `role-{agent}-*` | Role-specific | That agent's prompt only |
+| `template-*` | Templates | Tester's prompt |
 
-if [ "$REMOTE_TS" = "$LOCAL_TS" ]; then
-  echo "Cache is current — skip full fetch"
-else
-  echo "Playbook changed — re-fetch and rebuild cache"
-fi
-```
+5. Hold all content in memory for injection into agent prompts (Steps 5, 8, 10).
 
-4. **If timestamps match:** read cached files locally. No network calls.
-5. **If timestamps differ (or cache missing):** do the full fetch, then rebuild the cache (see below).
+**Error handling:** If the registry or playbook fetch fails (network, auth), warn the user and proceed without playbooks. Do not abort the build loop.
 
-### Full fetch & rebuild cache (only when stale)
+### AGENTS.md
 
-Fetch ALL files from the playbook gist. Sort them into the cache:
-
-| Prefix/pattern | Cache location |
-|---------------|---------------|
-| No prefix (pitfalls, guides, rules) | `.autocraft/playbook-rules.md` (concatenated, timestamped) |
-| `role-{agent}-*` | `.autocraft/role-{agent}.md` |
-| `template-*` | `.autocraft/templates/{name}.md` |
-
-Write `.autocraft/playbook-rules.md`:
-
-```markdown
-<!-- playbook_updated: 2026-03-30T12:19:55Z -->
-# Platform Rules — Auto-generated from playbooks. Do not edit.
-
----
-{concatenate all pitfall/guide/rule entries here, each as a section with --- separators}
-```
-
-### Ensuring AGENTS.md references the cache
-
-If `AGENTS.md` exists but does NOT contain a reference to `.autocraft/playbook-rules.md`, append:
-
-```markdown
-
-## Platform Rules
-Read and follow all rules in [.autocraft/playbook-rules.md](.autocraft/playbook-rules.md).
-```
-
-If `AGENTS.md` does not exist, create it with a minimal scaffold:
-
-```markdown
-# AGENTS.md
-
-## Platform Rules
-Read and follow all rules in [.autocraft/playbook-rules.md](.autocraft/playbook-rules.md).
-```
-
-The user can then add project-specific rules above or below the reference.
-
-### Why this design
-
-- **AGENTS.md stays user-editable** — the Orchestrator never overwrites user content
-- **Playbook rules are cached locally** — one API call to check freshness, full fetch only when stale
-- **`AGENTS.md` is loaded by the harness** into every agent's context. The reference directive ensures agents also read the playbook rules file.
-- **Adding a new playbook entry** = update the gist → next run detects the timestamp change → cache rebuilds → all agents see it
+`AGENTS.md` (repo root) is **user-editable** — project-specific rules, conventions, notes. The harness auto-loads it into every agent's context. It does NOT need to reference playbook files (playbook content is injected directly into prompts).
 
 ## Step 3: Build Acceptance Criteria Master List
 
@@ -378,8 +309,8 @@ If any scan is not CLEAN: include in Builder's directive as **first priority to 
 Spawn a background Agent with:
 1. [builder.md](builder.md) contents
 2. **Mandatory Agent Launch Directives** (from above — output streaming, always run tests, autonomous execution)
-3. Directive to read `AGENTS.md` and `.autocraft/playbook-rules.md` (agents read these files themselves — the harness auto-loads `AGENTS.md`, and the agent reads `.autocraft/playbook-rules.md` per Step 0)
-4. `.autocraft/role-builder.md` content (role-specific playbook, cached locally)
+3. **Full playbook content** — general rules + role-specific builder rules + templates (fetched in Step 2, injected directly into prompt)
+4. Directive to read `AGENTS.md` for project-specific rules
 5. Current `.autocraft/journey-state.md`
 6. Directive: which journey to build/extend, plus any simulation fixes from Step 4
 7. Any **Builder-routed feedback** from `.autocraft/feedback-log.md` (unresolved items where `Routed to: Builder`)
@@ -390,13 +321,13 @@ Wait for Builder to complete.
 
 ### Post-Builder Gate: AGENTS.md Compliance Check
 
-After the Builder completes, verify it followed the rules in `AGENTS.md`. Run the platform-specific scan commands from the playbook (`role-orchestrator-{platform}.md`) plus these general checks:
+After the Builder completes, verify it followed the rules. Run the platform-specific scan commands from the playbook (role-orchestrator entries) plus these general checks:
 
 1. **Generated project files** — if a project generator config exists (e.g., `project.yml`), check `git diff --name-only` for direct edits to generated files (e.g., `.pbxproj`). Violation = re-launch Builder.
 2. **Simulation infrastructure** — re-run the pre-build simulation scan. Any new violations = re-launch Builder.
-3. **Any other AGENTS.md rule violations** — read the diff, compare against AGENTS.md rules.
+3. **Any other rule violations** — read the diff, compare against `AGENTS.md` and playbook rules.
 
-If ANY violation: **re-launch the Builder** with the specific violation and directive to read `AGENTS.md` and fix it.
+If ANY violation: **re-launch the Builder** with the specific violation.
 
 ## Step 6: Generate UI Test Contract (UI mode only)
 
@@ -527,8 +458,8 @@ Write to `.autocraft/journeys/{NNN}-{name}/integration-test-contract.md`:
 After the test contracts are written, spawn a background Tester Agent with:
 1. [tester.md](tester.md) contents
 2. **Mandatory Agent Launch Directives** (from above — output streaming, always run tests, autonomous execution)
-3. Directive to read `AGENTS.md` and `.autocraft/playbook-rules.md` (same as Builder — harness auto-loads `AGENTS.md`, agent reads playbook rules per Step 0)
-4. `.autocraft/role-tester.md` content (role-specific playbook, cached locally)
+3. **Full playbook content** — general rules + role-specific tester rules + templates (fetched in Step 2, injected directly into prompt)
+4. Directive to read `AGENTS.md` for project-specific rules
 5. The spec file path
 6. **The UI test contract** (`.autocraft/journeys/{NNN}-{name}/test-contract.md`)
 7. **The integration test contract** (`.autocraft/journeys/{NNN}-{name}/integration-test-contract.md`) if it exists
@@ -564,7 +495,7 @@ Wait for Tester to complete.
 
 ### Post-Tester Gate: AGENTS.md Compliance Check
 
-Same checks as Post-Builder Gate. If ANY AGENTS.md rule violation: **re-launch the Tester** with the specific violation.
+Same checks as Post-Builder Gate. If ANY rule violation: **re-launch the Tester** with the specific violation.
 
 ## Step 9: Validate Contract Compliance (structural — before Inspector)
 
@@ -573,11 +504,14 @@ After the Tester finishes, validate the test file against the test contract. Thi
 For each criterion in the contract:
 1. **ACTION present?** — grep the test file for the action target (e.g., the element being clicked). If the contract specifies an action and the test file doesn't contain the corresponding interaction → FAIL
 2. **ASSERT present?** — grep for the assertion. If the contract says `ASSERT_TYPE: behavioral` and the test only checks existence → FAIL
-3. **No silent skips?** — grep for conditional guards that wrap contract assertions. Any match = the Tester made a mandatory assertion optional → FAIL
-4. **FAIL_IF_BLOCKED present?** — for criteria with prerequisites, grep for the FAIL message from the contract. If missing, the Tester will silently skip blocked criteria → FAIL
+3. **No silent skips?** — grep for conditional patterns that wrap assertions and make them optional. Forbidden: wrapping assertions inside `if condition { assert }` or using early-return guards without an explicit failure call. Allowed: asserting first then using the result, or guarding with an explicit test-failure call before returning. The playbook provides platform-specific examples of forbidden/allowed patterns → FAIL
+4. **FAIL_IF_BLOCKED present?** — for criteria with prerequisites, grep for the **exact** FAIL_IF_BLOCKED message from the contract **verbatim**. Paraphrased messages count as FAIL → FAIL
 5. **ASSERT_CONTAINS enforced?** — for every `behavioral` criterion, grep the test file for a content-matching assertion near the action. If the test only detects change without verifying expected content → FAIL
+6. **SCREENSHOT captured?** — for every criterion with a SCREENSHOT field in the contract, grep the test file for the screenshot capture call with that name. If any contract-specified screenshot is missing → FAIL
+7. **Single-flow state machine?** — UI test contracts define a Phase-ordered state machine. Verify the test implements criteria within a **single test function** that follows the Phase sequence (Phase 1 → Phase 2 → ... → Phase N). Splitting contract phases into separate test functions breaks the state machine — each function starts fresh, losing state from prior phases. Exceptions: criteria that require app relaunch or contradictory preconditions MAY be in separate functions.
+8. **Base class used correctly?** — if the project has a journey test base class, verify the test subclasses it AND calls the parent setup method instead of duplicating setup logic → FAIL
 
-The playbook provides the platform-specific grep patterns and test file path conventions (`role-orchestrator-{platform}.md`). The Orchestrator constructs these checks dynamically from the contract.
+The playbook provides the platform-specific grep patterns, test file conventions, and code examples for each check. The Orchestrator constructs these checks dynamically from the contract.
 
 If ANY check fails: **re-launch the Tester immediately** with the specific violations. Do NOT proceed to Inspector.
 
@@ -636,7 +570,7 @@ ALL of:
 
 # Templates
 
-The playbook provides the platform-specific test base class template (`template-journey-test-case.md`). Copy it into the test target if not already present. It provides:
+The playbook provides the platform-specific test base class template (`template-*`). The Orchestrator includes the template in the Tester's prompt (Step 8). Copy it into the test target if not already present. It provides:
 - Screenshot capture with dedup and timing
 - Setup/teardown lifecycle
 - Timing log for the Orchestrator's watcher

@@ -29,8 +29,10 @@ These produce PASS/FAIL. They cannot be gamed. The playbook provides the exact c
 | Bypass Flags | No test-only flags that skip real code paths | UI + integration tests | Test bypasses real functionality |
 | Stub Functions | No production functions that only return empty values | Production code | Feature is faked |
 | Vacuous Assertions | No assertions that accept both success and failure | **UI + integration tests** | Test proves nothing |
+| Screenshot Presence (UI mode) | Every contract SCREENSHOT has a capture call in the test | UI test files | Screenshot evidence missing |
+| Silent Skip Guards | No conditional patterns that skip assertions without explicit failure | UI + integration tests | Mandatory criterion silently skipped |
 
-**Important:** Scans 2 and 4 must cover BOTH UI test files AND integration test files. An integration test that calls a pipeline but only asserts the output is non-nil (without checking content) is vacuous.
+**Important:** Scans 2, 4, and 7 must cover BOTH UI test files AND integration test files. An integration test that calls a pipeline but only asserts the output is non-nil (without checking content) is vacuous. A test that wraps an assertion inside a conditional check (without failing on the false branch) makes a mandatory criterion optional.
 
 ### Scan 5 — "Show Me" Test
 For every acceptance criterion, ask: **"Did the test show me this working, or just show me the UI exists?"**
@@ -47,6 +49,8 @@ If the test only asserts `.exists` or `.isEnabled` on an element whose criterion
 - **ANY Scan 1 or Scan 2 failure**: verdict = `needs-extension`, score = 0%. No exceptions.
 - **Scan 3 or 4 failures**: verdict = `needs-extension`, specific fixes listed.
 - **Any Scan 5 failure**: verdict = `needs-extension`. List uncovered criteria with what's missing (the verb that was never performed).
+- **Scan 6 failure (Screenshot Presence)**: verdict = `needs-extension`. List missing screenshot capture calls with the expected names from the contract.
+- **Scan 7 failure (Silent Skip Guards)**: verdict = `needs-extension`. List specific lines where assertions are wrapped in conditional patterns without explicit failure on the false branch.
 - **ALL scans pass**: proceed to Phase 2.
 
 ## Inspector Phase 2: Subjective Assessment
