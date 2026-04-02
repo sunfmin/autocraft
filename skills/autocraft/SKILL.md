@@ -429,27 +429,44 @@ Write to `.autocraft/journeys/{NNN}-{name}/integration-test-contract.md`:
 
 ## Analysis
 <!-- What was found in the code that needs integration testing -->
-- Pipeline: {A → B → C}
+- Pipeline: {A → B → C → D}
 - Silent failure risk: {what could break without UI tests catching it}
 - Files involved: {list of source files}
 
-## Tests
+## Integrated Scenario Tests
 
-### IT{N}: {pipeline or integration being verified}
-- SCOPE: {the full pipeline being tested — not a single method}
-- SETUP: {test fixtures, temp directories, sample data files}
-- ACTION: {instantiate the pipeline, feed known input, run to completion}
-- ASSERT: {verify the output is correct — file exists AND content is valid}
-- FAIL_MESSAGE: "{what's broken if this fails}"
+### SCENARIO{N}: {full pipeline being verified}
+- PIPELINE: {A → B → C → D — describe the full data flow}
+- STEPS:
+  1. SETUP: {create real test data — temp dirs, generate audio via `say`, etc.}
+     ASSERT: {setup produced valid data}
+     FAIL: "Step 1: {what went wrong}"
+  2. ACTION: {Component A processes input}
+     ASSERT: {A produced expected output — check content, not just existence}
+     FAIL: "Step 2: {specific failure}"
+  3. ACTION: {Component B receives A's output}
+     ASSERT: {B produced expected output}
+     FAIL: "Step 3: {specific failure}"
+  4. VERIFY: {end-to-end output matches expectations}
+     ASSERT: {final result is correct — parse, validate content}
+     FAIL: "Step 4: {specific failure}"
+
+## Edge Case Tests (only for paths NOT covered by scenarios)
+### EDGE{N}: {error condition or boundary}
+- SCOPE: {specific edge case}
+- ASSERT: {expected behavior}
 ```
 
 **Rules:**
-1. Test **pipelines**, not individual methods — each test should exercise a real data flow from input to output
-2. Use real dependencies (real files, real libraries) — mocks hide the exact bugs these tests are meant to catch
-3. Tests must be runnable without launching the app — use the platform's test-visibility mechanism to access internals (see playbook) and instantiate components directly
-4. Fast: <30s per test. Use small test data (short audio clips, tiny models if possible, minimal files)
-5. Each test must validate **output content**, not just **output existence** — a file existing but containing garbage is a failure
-6. If a test needs a large resource (ML model, large file), check it exists first and fail with a clear message ("Model not found at path X — run setup first") rather than silently skipping
+1. **Integrated scenario tests, not unit tests.** One test per pipeline that exercises the full chain A → B → C → D. A single scenario test replaces 4 isolated unit tests.
+2. **Step-by-step assertions with unique failure messages.** Each step asserts before the next step begins. Fail messages say exactly which step and what went wrong. The AI reads the failure and knows immediately where to look.
+3. **Fail fast.** If Step 2 fails, Steps 3-4 don't run. Use `guard` + assertion.
+4. Use real dependencies (real files, real libraries) — mocks hide the exact bugs these tests are meant to catch
+5. Tests must be runnable without launching the app — use the platform's test-visibility mechanism to access internals (see playbook) and instantiate components directly
+6. Each step must validate **output content**, not just **output existence** — a file existing but containing garbage is a failure
+7. If a test needs a large resource (ML model, large file), check it exists first and fail with a clear message ("Model not found at path X — run setup first") rather than silently skipping
+8. **Remove redundant small tests.** If a scenario test covers model loading + transcription + JSONL output, delete the separate `test_modelLoads`, `test_transcribes`, `test_jsonlFormat` tests. Only keep small tests for edge cases NOT exercised by any scenario.
+9. **Never skip tests.** Every test runs every time. Slow tests are acceptable — they're proving real functionality.
 
 ## Step 8: Launch Tester Agent (background)
 

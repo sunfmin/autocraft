@@ -25,6 +25,63 @@ Your only creative freedom is in the _how_ — the platform code that navigates 
 - When a prerequisite fails, use the contract's FAIL_IF_BLOCKED message verbatim
 - Screenshot after every contract-specified screenshot point via `snap()`
 - Set journey status to `needs-review` when done
+- **Run ALL tests after implementing — fix failures before reporting done**
+
+## Test Architecture: Integrated Scenario Tests, Not Unit Tests
+
+**CRITICAL PRINCIPLE: Write large integrated scenario tests, not small isolated unit tests.**
+
+A single integrated test that exercises the full pipeline (audio → transcription → JSONL → playback) is worth 10 isolated unit tests that each test one tiny piece. Here's why:
+
+- An integrated test catches **real interaction bugs** between components
+- It proves **the pipeline actually works end-to-end**
+- Small unit tests often pass individually but miss integration failures
+- When an integrated test fails, its step-by-step structure tells you exactly WHERE it failed
+
+### Structure of an Integrated Scenario Test
+
+```
+test_fullScenario_featureName() {
+    // STEP 1: Setup — create real test data
+    // ASSERT: setup succeeded
+    // → If this fails, the test stops here with a clear message
+    
+    // STEP 2: Component A processes input
+    // ASSERT: A produced expected output
+    // → Fail message says exactly what A was supposed to do
+    
+    // STEP 3: Component B receives A's output
+    // ASSERT: B produced expected output  
+    // → Fail message says exactly what B was supposed to do
+    
+    // STEP 4: End-to-end verification
+    // ASSERT: final output matches expectations
+    // → Fail message describes the full pipeline failure
+}
+```
+
+### Rules for Integrated Tests
+
+1. **One test per pipeline, not per method.** Don't write `test_loadModel`, `test_transcribe`, `test_writeJsonl` separately. Write `test_fullPipeline_audioToTranscript` that does all three.
+
+2. **Each step has its own assertion with a unique failure message.** When the test fails, the message tells you: "Step 3 failed: Component B received A's output but produced empty result." The AI (or human) reads this and knows exactly where to look.
+
+3. **Fail fast.** Use `guard` + assertion at each step. Don't continue testing Component B if Component A already failed.
+
+4. **Real dependencies, real data.** Use real files, real libraries, real codecs. No mocks. Generate real test audio with `say`, use real whisper models, write to real temp directories.
+
+5. **Clean up properly.** Use temp directories. Clean up in `tearDown`.
+
+6. **Consolidate redundant tests.** If `test_fullPipeline` loads a model, transcribes audio, and writes JSONL, then separate `test_modelLoads`, `test_transcribesAudio`, and `test_jsonlFormat` are redundant — remove them. Only keep small tests for edge cases NOT covered by the integrated test (e.g., error paths, boundary conditions).
+
+### What small tests are still valuable
+
+Keep small/fast tests ONLY for:
+- **Error paths** that the integrated test doesn't exercise (invalid input, missing files, corrupt data)
+- **Boundary conditions** (empty input, max size, overflow)
+- **Pure logic** that doesn't involve I/O (sentence boundary detection, normalization)
+
+If a small test's scenario is already covered by an integrated test, **remove it**.
 
 ## Tester Step 0: Read Project Rules + Playbooks
 
@@ -52,18 +109,21 @@ Also read the Builder's report for accessibility identifiers, testability notes,
 
 If the Orchestrator provides an `integration-test-contract.md`, implement integration tests **before** UI tests. These test real data pipelines, not individual methods.
 
-1. **Create a unit test target** if it doesn't exist (project config depends on platform — see playbook)
-2. **Write integration test files** using the platform's test-visibility mechanism to access internals (see playbook)
-3. **Run integration tests first** — they're faster than UI tests and catch silent plumbing failures early
-4. If integration tests fail, report the failure — the pipeline is broken, UI tests will be meaningless
-5. Integration tests MUST NOT launch the app or interact with UI — instantiate components directly
+1. **Create integrated scenario tests** — one test per pipeline, exercising the full chain with step-by-step assertions
+2. **Run integration tests first** — they're faster than UI tests and catch silent plumbing failures early
+3. If integration tests fail, report the failure — the pipeline is broken, UI tests will be meaningless
+4. Integration tests MUST NOT launch the app or interact with UI — instantiate components directly
 
 ### Integration test principles:
-- **Test pipelines, not methods** — instantiate the full chain (A → B → C), feed real input, verify real output
+- **Test pipelines, not methods** — one integrated test covering A → B → C → D is better than four separate tests
+- **Step-by-step assertions** — each step asserts its result before the next step uses it as input
+- **Unique failure messages per step** — "Step 2: WhisperService produced 0 segments from 3s speech audio" tells you exactly what broke
+- **Fail fast** — if Step 2 fails, don't attempt Steps 3-4
 - **Use real dependencies** — don't mock the thing you're trying to verify. Use real files, real libraries, real codecs.
 - **Validate content, not just existence** — a file existing is not proof it's correct. Parse it, check sizes, verify format.
 - **Use temp directories** for file output — clean up after each test
-- **Small test data** — 2-second audio clips, minimal valid files, tiny models if available. Keep each test under 30 seconds.
+- **Small test data** — 2-second audio clips, minimal valid files, tiny models if available. Keep each test under 30 seconds (except full pipeline tests which may take longer).
+- **Remove redundant small tests** — if the integrated test covers a scenario, delete the isolated unit test
 
 ## Tester Step 2: Implement the UI Test Contract
 
@@ -97,11 +157,18 @@ Before testing features that need input, ensure real content is available. The p
 ### Bypass flag ban
 Flags that bypass real processing are BANNED. The playbook lists platform-specific banned flags. The ONLY acceptable configuration flags set app state without bypassing functionality.
 
-## Tester Step 4: Run Test + Verify
+## Tester Step 4: Run ALL Tests + Verify
 
-Run the test with **full output streaming** — never filter, pipe, or suppress test output. If the platform supports separate build and test commands, split them so build errors are visible immediately. For platforms where build+test is a single atomic command, run it as-is and use a sub-agent if output would overwhelm context.
+Run **ALL** tests with **full output streaming** — never filter, pipe, or suppress test output.
 
-Verify all screenshots are written to `.autocraft/journeys/{NNN}/screenshots/`.
+**CRITICAL: Do not skip any tests.** Every test runs every time. If a test takes 60+ seconds, that's acceptable — it's proving real functionality. Never skip a test just because it's slow.
+
+If the platform supports separate build and test commands, split them so build errors are visible immediately.
+
+After running:
+1. **Check for failures** — fix any failing tests before proceeding
+2. **Verify screenshots** are written to `.autocraft/journeys/{NNN}/screenshots/`
+3. **Report test count and results** — "87 tests, 0 failures"
 
 ## Tester Step 5: Update Journey State
 
@@ -117,4 +184,5 @@ Set status to **`needs-review`**. NEVER set `polished`.
 - **NEVER edit generated project files** — use the platform's project generator (see playbook)
 - One journey at a time
 - **The contract is non-negotiable** — if it says behavioral, prove behavior. If a prerequisite fails, FAIL. Never work around the contract.
-- **Unit tests run before UI tests** — if a unit-test-contract exists, implement and run those first
+- **Run ALL tests after writing — no exceptions, no skips**
+- **Prefer integrated scenario tests over small unit tests** — consolidate when possible
