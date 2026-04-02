@@ -30,59 +30,27 @@ Your only creative freedom is in the _how_ — the platform code that navigates 
 
 ## Test Architecture: Integrated Scenario Tests, Not Unit Tests
 
-**CRITICAL PRINCIPLE: Write large integrated scenario tests, not small isolated unit tests.**
-
-A single integrated test that exercises the full pipeline (audio → transcription → JSONL → playback) is worth 10 isolated unit tests that each test one tiny piece. Here's why:
-
-- An integrated test catches **real interaction bugs** between components
-- It proves **the pipeline actually works end-to-end**
-- Small unit tests often pass individually but miss integration failures
-- When an integrated test fails, its step-by-step structure tells you exactly WHERE it failed
-
-### Structure of an Integrated Scenario Test
+**Write one large test per pipeline, not small isolated unit tests.** A single integrated test that exercises A → B → C → D catches real interaction bugs that isolated tests miss. When it fails, step-by-step assertions tell you exactly WHERE.
 
 ```
 test_fullScenario_featureName() {
     // STEP 1: Setup — create real test data
-    // ASSERT: setup succeeded
-    // → If this fails, the test stops here with a clear message
+    // ASSERT: setup succeeded (fail fast with clear message)
     
     // STEP 2: Component A processes input
     // ASSERT: A produced expected output
-    // → Fail message says exactly what A was supposed to do
     
     // STEP 3: Component B receives A's output
-    // ASSERT: B produced expected output  
-    // → Fail message says exactly what B was supposed to do
+    // ASSERT: B produced expected output
     
     // STEP 4: End-to-end verification
     // ASSERT: final output matches expectations
-    // → Fail message describes the full pipeline failure
 }
 ```
 
-### Rules for Integrated Tests
+**Rules:** One test per pipeline, not per method. Each step asserts with a unique failure message. Fail fast — don't test B if A failed. Real dependencies, no mocks. Clean up in `tearDown`. Remove redundant small tests already covered by the scenario.
 
-1. **One test per pipeline, not per method.** Don't write `test_loadModel`, `test_transcribe`, `test_writeJsonl` separately. Write `test_fullPipeline_audioToTranscript` that does all three.
-
-2. **Each step has its own assertion with a unique failure message.** When the test fails, the message tells you: "Step 3 failed: Component B received A's output but produced empty result." The AI (or human) reads this and knows exactly where to look.
-
-3. **Fail fast.** Guard each step with an assertion that fails loudly. If a prerequisite fails, emit a test failure and return — never silently skip. Don't continue testing Component B if Component A already failed.
-
-4. **Real dependencies, real data.** Use real files, real libraries, real codecs. No mocks. Generate real test audio with `say`, use real whisper models, write to real temp directories.
-
-5. **Clean up properly.** Use temp directories. Clean up in `tearDown`.
-
-6. **Consolidate redundant tests.** If `test_fullPipeline` loads a model, transcribes audio, and writes JSONL, then separate `test_modelLoads`, `test_transcribesAudio`, and `test_jsonlFormat` are redundant — remove them. Only keep small tests for edge cases NOT covered by the integrated test (e.g., error paths, boundary conditions).
-
-### What small tests are still valuable
-
-Keep small/fast tests ONLY for:
-- **Error paths** that the integrated test doesn't exercise (invalid input, missing files, corrupt data)
-- **Boundary conditions** (empty input, max size, overflow)
-- **Pure logic** that doesn't involve I/O (sentence boundary detection, normalization)
-
-If a small test's scenario is already covered by an integrated test, **remove it**.
+**Keep small tests ONLY for:** error paths, boundary conditions, and pure logic not exercised by scenario tests.
 
 ## Forbidden Guard Patterns
 
@@ -185,19 +153,11 @@ Flags that bypass real processing are BANNED. The playbook lists platform-specif
 
 ## Tester Step 4: Run ALL Tests + Verify
 
-Run **ALL** tests with **full output streaming — ZERO TOLERANCE FOR PIPING.**
+Run **ALL** tests with **full output streaming** — follow the Mandatory Agent Launch Directives injected in your prompt (no piping, use sub-agents for verbose output).
 
-**BANNED patterns — using any of these will get you re-launched:**
-- `xcodebuild test ... 2>&1 | grep -E "Test Case|FAIL"` ← BANNED
-- `xcodebuild test ... 2>&1 | tail -20` ← BANNED
-- `pytest ... | grep PASSED` ← BANNED
-- `npm test 2>&1 | head -50` ← BANNED
+If output is too verbose, spawn a **sub-agent** to run the command. The sub-agent absorbs the full output and returns: test count, pass/fail, error messages if any.
 
-**Required pattern:**
-- Run `xcodebuild test-without-building -scheme X -destination 'platform=macOS' -only-testing:TargetName` DIRECTLY with no pipes.
-- If output is too verbose for your context, spawn a **sub-agent** to run the command. The sub-agent absorbs the full output and returns: test count, pass/fail, error messages if any.
-
-**CRITICAL: Do not skip any tests.** Every test runs every time. If a test takes 60+ seconds, that's acceptable — it's proving real functionality. Never skip a test just because it's slow.
+**Do not skip any tests.** Every test runs every time. Slow tests are acceptable — they're proving real functionality.
 
 If the platform supports separate build and test commands, split them so build errors are visible immediately.
 
@@ -223,4 +183,3 @@ Set status to **`needs-review`**. NEVER set `polished`.
 - **Run ALL tests after writing — no exceptions, no skips**
 - **Prefer integrated scenario tests over small unit tests** — consolidate when possible
 - **Act autonomously on obvious gaps** — if a test fails and the fix is obvious, fix it immediately without asking. Only escalate when you're genuinely stuck.
-- **NEVER pipe test output** — run test commands directly. Use sub-agents for verbose output isolation. See "Tester Step 4" for banned patterns.
