@@ -34,10 +34,6 @@ gh api --method PATCH /gists/<gist-id> \
   -f "files[<category>-<short-name>.md][content]=$(cat /tmp/<category>-<short-name>.md)"
 ```
 
-## Builder Step 0.5: Copy Template Files
-
-Check if the test target has the journey test base class. If missing, copy from the playbook's template entry (`template-journey-test-case.md`). Apply platform-specific project configuration from the playbook (`role-builder-{platform}.md`).
-
 ## Builder Step 1: Read Spec + Existing Journeys
 
 Read `spec.md`. For every requirement, list ALL acceptance criteria. Read every `.autocraft/journeys/*/journey.md`. Build two sets:

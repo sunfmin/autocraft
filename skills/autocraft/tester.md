@@ -80,12 +80,6 @@ Each exception function must re-establish its own preconditions from scratch.
 1. **Read `AGENTS.md`** in the repo root — it has project-specific rules and conventions.
 2. The Orchestrator has already included the full playbook (general rules + role-specific rules + templates) in your prompt. These are non-negotiable. Violating them causes the Orchestrator to reject your work and re-launch you.
 
-## Tester Step 0.5: Copy Template Files
-
-Check if the test target has the journey test base class. If missing, copy from the template provided in your prompt. Apply platform-specific project configuration from the playbook entries in your prompt.
-
-**Base class usage:** Always subclass the journey test base class and call the parent setup method. Add configuration (e.g., launch arguments) BEFORE calling the parent setup. Never duplicate the base class setup logic — it handles screenshot directory creation, timing file cleanup, app launch, and window management.
-
 ## Tester Step 1: Read the Test Contracts
 
 Read the UI test contract at `.autocraft/journeys/{NNN}-{name}/test-contract.md`. For each criterion, note:
