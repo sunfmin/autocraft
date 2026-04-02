@@ -126,10 +126,18 @@ For each criterion in the contract:
 4. **Screenshot** with the exact name from the contract. Every criterion with a SCREENSHOT field MUST have a corresponding screenshot capture call. The playbook provides the platform-specific capture method.
 
 ### Screenshot helper
-Use the journey test base class from the playbook. One wait-for-element per view transition; instant checks for subsequent elements in the same view.
+Use the journey test base class from the playbook. Screenshots write to `/tmp/autocraft-screenshots/{journeyName}/` during test (outside sandbox, real-time access). The Orchestrator copies them to the project directory post-test with dedup.
 
-### 5-second gap rule
-Every gap between screenshots <= 5s. Use the slow-OK mechanism for unavoidable delays.
+### Element wait rule
+**NEVER use raw `element.waitForExistence(timeout:)` for assertions.** ALWAYS use the base class helper `waitAndSnap(element, timeout:, message)` which:
+1. Takes a screenshot BEFORE waiting (feeds the watchdog, shows current screen state)
+2. On failure: captures the screen + dumps `app.debugDescription` (all windows) so the AI sees what IS on screen vs what was expected
+3. Uses 5-second default timeout for fast feedback
+
+Exception: non-asserting UI settling waits like `_ = app.staticTexts["nonexistent"].waitForExistence(timeout: 1)` can use raw wait.
+
+### Watchdog (automatic)
+JourneyTestCase includes a watchdog timer that auto-captures a screenshot + accessibility tree dump if >10s pass between `snap()` calls. No manual configuration needed.
 
 ## Tester Step 3: Set Up Real Test Content
 
@@ -150,7 +158,7 @@ If the platform supports separate build and test commands, split them so build e
 
 After running:
 1. **Check for failures** — fix any failing tests before proceeding
-2. In `ui` mode: **Verify screenshots** are written to `.autocraft/journeys/{NNN}/screenshots/`
+2. In `ui` mode: **Copy screenshots** from `/tmp/autocraft-screenshots/{journeyName}/` to `.autocraft/journeys/{NNN}/screenshots/` with dedup (skip identical PNGs by content hash). Then **read each screenshot** to visually verify what the app showed.
 3. **Report test count and results** — "87 tests, 0 failures"
 
 ## Tester Step 5: Update Journey State
@@ -160,6 +168,7 @@ Set status to **`needs-review`**. NEVER set `polished`.
 ## Tester Rules
 
 - No hard-coded delays (no `sleep()` or equivalent)
+- **NEVER use raw `waitForExistence` for assertions** — use `waitAndSnap()` (see playbook)
 - Use instant element checks after the first wait per view transition (see playbook for platform patterns)
 - Assert with the platform's assertion macros for every critical step — never conditional guards (see "Forbidden Guard Patterns")
 - Every interaction must verify a **result**, not just that the element still exists

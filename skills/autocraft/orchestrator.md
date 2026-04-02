@@ -325,28 +325,31 @@ Launch Tester (background) with standard items plus:
 - Directive: implement and run integration tests first, then UI tests (integration mode: integration tests only)
 - If re-launch after rejection: the specific failure list with line numbers
 
-**Timing Watcher (UI mode only)** — in `integration` mode, skip the watcher entirely. In `ui` mode, poll `screenshot-timing.jsonl` every 5s, kill test on unexcused SLOW entries:
+### Screenshots (UI mode only)
+
+During test execution, JourneyTestCase writes screenshots to `/tmp/autocraft-screenshots/{journeyName}/` (outside xctrunner sandbox, accessible in real-time). The watchdog timer in JourneyTestCase auto-captures if >10s pass between screenshots and dumps the full accessibility tree (all windows) to a `.txt` file — this catches tests stuck on `waitForExistence`.
+
+After xcodebuild completes, the Orchestrator (or Tester agent) copies screenshots to the project directory with dedup:
 
 ```bash
-TIMING_FILE=".autocraft/journeys/{NNN}-{name}/screenshot-timing.jsonl"
-SEEN=0
-while true; do
-  if [ -f "$TIMING_FILE" ]; then
-    TOTAL=$(wc -l < "$TIMING_FILE" | tr -d ' ')
-    if [ "$TOTAL" -gt "$SEEN" ]; then
-      tail -n +"$((SEEN + 1))" "$TIMING_FILE"
-      SLOW_COUNT=$(tail -n +"$((SEEN + 1))" "$TIMING_FILE" | grep '"SLOW"' | grep -cv 'SLOW-OK' || true)
-      SEEN=$TOTAL
-      if [ "$SLOW_COUNT" -gt "0" ]; then
-        echo "VIOLATION: $SLOW_COUNT SLOW entries"
-        # Kill test process — platform-specific command from playbook (role-orchestrator-{platform}.md)
-        exit 1
-      fi
+SRCDIR="/tmp/autocraft-screenshots/{journeyName}"
+DSTDIR=".autocraft/journeys/{journeyName}/screenshots"
+mkdir -p "$DSTDIR"
+
+# Dedup copy: skip identical PNGs by content hash
+PREV_HASH=""
+for f in $(ls "$SRCDIR"/*.png 2>/dev/null | sort); do
+    HASH=$(md5 -q "$f")
+    if [ "$HASH" != "$PREV_HASH" ]; then
+        cp "$f" "$DSTDIR/"
+        PREV_HASH="$HASH"
     fi
-  fi
-  sleep 5
 done
+# Copy element dumps (no dedup)
+cp "$SRCDIR"/*.txt "$DSTDIR/" 2>/dev/null || true
 ```
+
+This runs OUTSIDE the sandbox (orchestrator/tester agent process), so it can write to the project directory.
 
 Wait for Tester to complete.
 
