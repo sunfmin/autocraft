@@ -35,15 +35,7 @@ These produce PASS/FAIL. They cannot be gamed. The playbook provides the exact c
 **Important:** Scans 2, 4, and 7 must cover BOTH UI test files AND integration test files. An integration test that calls a pipeline but only asserts the output is non-nil (without checking content) is vacuous. A test that wraps an assertion inside a conditional check (without failing on the false branch) makes a mandatory criterion optional.
 
 ### Scan 5 — "Show Me" Test
-For every acceptance criterion, ask: **"Did the test show me this working, or just show me the UI exists?"**
-
-Read the criterion text. Find the verb. Find the test step that performs that verb.
-- "sends a prompt" → test must click the button AND verify a prompt appeared in the output
-- "opens a text input" → test must click Ask AND type into the field
-- "seeks the video" → test must click a timestamp AND verify the time changed
-- "is configurable" → test must change the setting AND verify the new value took effect
-
-If the test only asserts `.exists` or `.isEnabled` on an element whose criterion describes an *action*, that criterion is **not covered**.
+For every acceptance criterion: find the verb (sends, opens, seeks, configures...), then verify the test **performs that action AND checks the result**. If the test only asserts `.exists` or `.isEnabled` on an element whose criterion describes an action, that criterion is **not covered**.
 
 ### Scan Enforcement
 - **ANY Scan 1 or Scan 2 failure**: verdict = `needs-extension`, score = 0%. No exceptions.

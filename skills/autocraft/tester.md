@@ -54,14 +54,7 @@ test_fullScenario_featureName() {
 
 ## Forbidden Guard Patterns
 
-A "conditional guard" is any code that makes a mandatory assertion optional — if the condition is false, the assertion is silently skipped instead of failing the test.
-
-**Forbidden:** wrapping assertions inside a conditional check. If the condition is false, the assertion never runs and the test passes silently.
-**Forbidden:** early-return guards without an explicit test failure. The test exits without asserting.
-**Allowed:** assert the condition first (test fails if false), then use the result.
-**Allowed:** guard with an explicit test failure call before returning.
-
-The playbook provides platform-specific code examples of forbidden and allowed patterns. **The rule:** every contract criterion MUST either assert (success) or fail (blocked). There is no third option where the criterion is silently skipped.
+Every contract criterion MUST either assert (success) or fail (blocked) — never silently skipped. **Forbidden:** wrapping assertions inside conditionals (skipped if false) or early-return guards without explicit failure. **Allowed:** assert-then-use, or guard with explicit failure before returning. The playbook provides platform-specific code examples.
 
 ## Single-Flow State Machine (UI tests)
 
@@ -120,7 +113,7 @@ Follow the contract's **Phase order** — it defines the state machine. Each Pha
 
 For each criterion in the contract:
 
-1. **Establish the prerequisite.** Follow the contract's Phase dependency chain. If you can't reach the required state (e.g., a button won't enable, a session won't start), write: `XCTFail("{FAIL_IF_BLOCKED message from contract}")` — then `return` or mark remaining dependent criteria as blocked.
+1. **Establish the prerequisite.** Follow the contract's Phase dependency chain. If you can't reach the required state (e.g., a button won't enable, a session won't start), use the platform's assertion failure macro (see playbook) with the exact FAIL_IF_BLOCKED message from the contract — then `return` or mark remaining dependent criteria as blocked.
 
 2. **Perform the ACTION** exactly as the contract specifies. Click the element, type the text, toggle the control.
 

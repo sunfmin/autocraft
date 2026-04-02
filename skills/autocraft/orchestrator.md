@@ -7,12 +7,9 @@
 **Every time you spawn a Builder, Tester, or Inspector agent, include these directives in the agent's prompt.** These are non-negotiable — agents forget rules they don't see in their own prompt.
 
 > **OUTPUT STREAMING — ZERO TOLERANCE FOR PIPING:**
-> When running build or test commands (xcodebuild, npm, cargo, pytest, etc.):
-> - Run commands DIRECTLY with NO pipes. Never use `| tail`, `| grep`, `| head`, or any filter.
-> - If output is too verbose, spawn a **sub-agent** to run the command. The sub-agent absorbs output and returns pass/fail + error details.
-> - `xcodebuild test ... 2>&1 | grep FAIL` is BANNED. Run `xcodebuild test ...` directly.
-> - `xcodebuild build ... 2>&1 | tail -20` is BANNED. Run `xcodebuild build ...` directly.
-> - Grepping static files for code scanning is fine. This rule applies to LONG-RUNNING PROCESS OUTPUT only.
+> Run build/test commands DIRECTLY with NO pipes (`| tail`, `| grep`, `| head` are BANNED).
+> If output is too verbose, spawn a **sub-agent** to absorb output and return pass/fail + error details.
+> Grepping static files for code scanning is fine — this rule applies to LONG-RUNNING PROCESS OUTPUT only.
 >
 > **ALWAYS RUN ALL TESTS:**
 > After every code change, run ALL tests with full output. Fix failures before reporting done. Never commit untested code. Never skip slow tests.
@@ -22,7 +19,9 @@
 
 **The Orchestrator itself must also follow these rules** when running post-gate checks, compliance scans, or any build/test commands.
 
-**Analyst integration — MANDATORY:** Every invocation where `$ARGUMENTS` contains natural language (not a file path or "continue") MUST launch the Analyst FIRST. The Analyst logs feedback to `.autocraft/feedback-log.md` and optionally updates `spec.md`. The Orchestrator MUST NOT skip the Analyst and go directly to the Builder when the user provides feedback. During the loop, check `.autocraft/feedback-log.md` at every handoff point for new entries. Route feedback items to the appropriate agent as part of their next launch directive.
+## Analyst Integration (MANDATORY)
+
+Every invocation where `$ARGUMENTS` contains natural language (not a file path or "continue") MUST launch the Analyst FIRST. The Analyst logs feedback to `.autocraft/feedback-log.md` and optionally updates `spec.md`. The Orchestrator MUST NOT skip the Analyst when the user provides feedback. During the loop, check `.autocraft/feedback-log.md` at every handoff point for new entries. Route feedback items to the appropriate agent as part of their next launch directive.
 
 ```dot
 digraph orchestrator_loop {
@@ -160,20 +159,24 @@ Before launching the Builder, scan for simulation infrastructure that bypasses r
 
 If any scan is not CLEAN: include in Builder's directive as **first priority to fix**.
 
-## Step 5: Launch Builder Agent (background)
+## Agent Launch Template
 
-**Integration mode — Builder skip:** If the project mode is `integration` AND no production code changes are needed (e.g., pure test refactoring, test consolidation), skip this step entirely and proceed to Step 7. Record in `.autocraft/journey-loop-state.md`: `Builder: skipped (no production code changes needed)`.
-
-Spawn a background Agent with:
-1. [builder.md](builder.md) contents
-2. **Mandatory Agent Launch Directives** (from above — output streaming, always run tests, autonomous execution)
-3. **Full playbook content** — general rules + role-specific builder rules + templates (fetched in Step 2, injected directly into prompt)
+Every agent launch includes these **standard items** in the prompt:
+1. Agent role instructions ([builder.md](builder.md), [tester.md](tester.md), or [inspector.md](inspector.md))
+2. Mandatory Agent Launch Directives (from above)
+3. Full playbook content — general rules + role-specific rules + templates (from Step 2)
 4. Directive to read `AGENTS.md` for project-specific rules
 5. Current `.autocraft/journey-state.md`
-6. Directive: which journey to build/extend, plus any simulation fixes from Step 4
-7. Any **Builder-routed feedback** from `.autocraft/feedback-log.md` (unresolved items where `Routed to: Builder`)
+6. Any agent-routed feedback from `.autocraft/feedback-log.md`
 
-The Builder implements production features and creates the journey directory, but does NOT write test files.
+Steps 5, 8, and 10 below list only the **additional items** specific to each agent.
+
+## Step 5: Launch Builder Agent (background)
+
+**Integration mode — Builder skip:** If the project mode is `integration` AND no production code changes are needed (e.g., pure test refactoring), skip to Step 7. Record in `.autocraft/journey-loop-state.md`: `Builder: skipped (no production code changes needed)`.
+
+Launch Builder (background) with standard items plus:
+- Directive: which journey to build/extend, plus any simulation fixes from Step 4
 
 Wait for Builder to complete.
 
@@ -313,18 +316,12 @@ Write to `.autocraft/journeys/{NNN}-{name}/integration-test-contract.md`:
 
 ## Step 8: Launch Tester Agent (background)
 
-After the test contracts are written, spawn a background Tester Agent with:
-1. [tester.md](tester.md) contents
-2. **Mandatory Agent Launch Directives** (from above — output streaming, always run tests, autonomous execution)
-3. **Full playbook content** — general rules + role-specific tester rules + templates (fetched in Step 2, injected directly into prompt)
-4. Directive to read `AGENTS.md` for project-specific rules
-5. The spec file path
-6. **The UI test contract** (`.autocraft/journeys/{NNN}-{name}/test-contract.md`)
-7. **The integration test contract** (`.autocraft/journeys/{NNN}-{name}/integration-test-contract.md`) if it exists
-8. The Builder's report (accessibility identifiers, testability notes, integration boundaries)
-9. Directive: implement and run integration tests first, then UI tests
-10. If this is a re-launch after rejection: include the specific failure list with line numbers
-11. Any **Tester-routed feedback** from `.autocraft/feedback-log.md` (unresolved items where `Routed to: Tester`)
+Launch Tester (background) with standard items plus:
+- The UI test contract (`.autocraft/journeys/{NNN}-{name}/test-contract.md`)
+- The integration test contract (`integration-test-contract.md`) if it exists
+- The Builder's report (accessibility identifiers, testability notes, integration boundaries)
+- Directive: implement and run integration tests first, then UI tests
+- If re-launch after rejection: the specific failure list with line numbers
 
 **Timing Watcher (UI mode only)** — in `integration` mode, skip the watcher entirely. In `ui` mode, poll `screenshot-timing.jsonl` every 5s, kill test on unexcused SLOW entries:
 
@@ -375,14 +372,11 @@ If ANY check fails: **re-launch the Tester immediately** with the specific viola
 
 ## Step 10: Launch Inspector Agent (foreground)
 
-After Tester finishes, spawn an Inspector Agent with:
-1. [inspector.md](inspector.md) contents
-2. **Mandatory Agent Launch Directives** (from above — output streaming, always run tests, autonomous execution)
-3. The spec file path
-3. Directive: evaluate the most recent journey
-4. **Project mode** — tell the Inspector whether this is `ui` or `integration` mode
-5. In `ui` mode: if the `/frontend-design` skill is installed, invoke it and include its output for design principles during screenshot review
-6. In `integration` mode: tell the Inspector to skip screenshot review and focus on objective scans, test quality, and assertion honesty
+Launch Inspector (foreground) with standard items plus:
+- Directive: evaluate the most recent journey
+- **Project mode** (`ui` or `integration`)
+- In `ui` mode: include `/frontend-design` output if installed
+- In `integration` mode: directive to skip screenshot review, focus on scans + assertion honesty
 
 Wait for Inspector verdict.
 
