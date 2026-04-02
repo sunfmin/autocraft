@@ -4,7 +4,8 @@ description: >
   Use when the user says "autocraft", "build journeys", "test the spec", or "cover my spec".
   Also use when the user has a spec.md and wants automated implementation with real output
   verification, or when building UI features that need screenshot-verified acceptance criteria.
-argument-hint: "[spec-file-path]"
+  Use "autocraft init" to install the always-on Analyst into a project via CLAUDE.md.
+argument-hint: "[spec-file-path | init]"
 ---
 
 # Autocraft
@@ -51,6 +52,17 @@ The **Orchestrator** manages handoffs and commits only when the Inspector approv
 ---
 
 ## Inputs
+
+**Special command:** If `$ARGUMENTS` is `init`, run the init flow instead of the build loop:
+
+1. Copy `{skill-base-dir}/claude-md-template.md` to `CLAUDE.md` in the user's project root
+2. Create `.autocraft/` directory if it doesn't exist
+3. Tell the user: "Analyst is now always-on in this project. Just talk naturally — I'll handle specs, feedback routing, and build triggers automatically."
+4. **Do not start the build loop.** Return immediately.
+
+If `CLAUDE.md` already exists, append the Analyst section under a `# Autocraft Analyst` heading instead of overwriting.
+
+---
 
 Spec source: $ARGUMENTS (defaults to `spec.md` in current directory)
 
