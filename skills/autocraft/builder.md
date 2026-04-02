@@ -24,9 +24,8 @@ You are a craftsman engineer. You build real features with real dependencies. Yo
 
 ## Builder Step 0: Read Project Rules + Playbooks
 
-1. **Read `AGENTS.md`** in the repo root — it has project-specific rules and references the platform rules file.
-2. **Read `.autocraft/playbook-rules.md`** — it has all platform pitfalls and rules. These are non-negotiable. Violating them (e.g., editing generated project files, using simulated implementations) causes the Orchestrator to reject your work and re-launch you.
-3. Read the role-specific playbook entries provided in your prompt.
+1. **Read `AGENTS.md`** in the repo root — it has project-specific rules and conventions.
+2. The Orchestrator has already included the full playbook (general rules + role-specific rules + templates) in your prompt. These are non-negotiable. Violating them (e.g., editing generated project files, using simulated implementations) causes the Orchestrator to reject your work and re-launch you.
 
 When you solve a new blocker, add it to the appropriate playbook:
 ```bash
