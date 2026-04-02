@@ -111,15 +111,24 @@ Playbooks are platform-specific knowledge bases stored as GitHub gists. The Orch
 1. Resolve the registry gist ID: read `.autocraft` from repo root if it exists, otherwise use default `bca7073d567ca8b7ba79ff4bad5fb2c5`.
 2. Fetch the registry: `gh gist view <registry-id> -f playbooks.json`
 3. For each playbook gist, fetch ALL files: `gh gist view <gist-id> --files` then read each file.
-4. Categorize content by filename prefix:
+4. Categorize content for injection by parsing `# ` (H1) headings within each file to split into sections:
 
-| Prefix/pattern | Category | Included in |
-|---------------|----------|-------------|
-| No prefix (pitfalls, guides, rules) | General rules | ALL agent prompts |
-| `role-{agent}-*` | Role-specific | That agent's prompt only |
-| `template-*` | Templates | Tester's prompt |
+| H1 heading pattern | Category | Included in |
+|-------------------|----------|-------------|
+| `# Role: Builder*` | Role-specific | Builder's prompt only |
+| `# Role: Tester*` | Role-specific | Tester's prompt only |
+| `# Role: Inspector*` | Role-specific | Inspector's prompt only |
+| `# Role: Orchestrator*` | Role-specific | Orchestrator only |
+| `# Template:*` | Template | Tester's prompt only |
+| Everything else (pitfalls, guides, architecture, etc.) | General rules | ALL agent prompts |
 
-5. Hold all content in memory for injection into agent prompts (Steps 5, 8, 10).
+A "section" starts at a matching `# ` heading and ends at the next `# ` heading (or EOF). Split the file content at H1 boundaries, then route each section to the correct agent based on the heading pattern.
+
+**Example:** A playbook file with headings `# XcodeGen Pitfalls`, `# Role: Tester (macOS)`, `# Template: JourneyTestCase` produces three sections: XcodeGen Pitfalls → general (all agents), Role: Tester → Tester only, Template → Tester only.
+
+5. Hold categorized content in memory for injection into agent prompts (Steps 5, 8, 10).
+
+**Critical:** When injecting into an agent's prompt, include ONLY that agent's role-specific section + general sections + templates (for Tester). Do NOT dump the entire playbook file — role sections for OTHER agents are noise that dilutes the rules the agent needs to follow.
 
 **Error handling:** If the registry or playbook fetch fails (network, auth), warn the user and proceed without playbooks. Do not abort the build loop.
 
@@ -155,7 +164,7 @@ Read `.autocraft/journey-state.md` to determine what to work on:
 
 ## Step 4: Pre-Build Simulation Scan
 
-Before launching the Builder, scan for simulation infrastructure that bypasses real code paths. The playbook provides platform-specific scan commands (`role-orchestrator-{platform}.md`).
+Before launching the Builder, scan for simulation infrastructure that bypasses real code paths. The playbook provides platform-specific scan commands (in the `# Role: Orchestrator` section).
 
 If any scan is not CLEAN: include in Builder's directive as **first priority to fix**.
 
@@ -164,7 +173,7 @@ If any scan is not CLEAN: include in Builder's directive as **first priority to 
 Every agent launch includes these **standard items** in the prompt:
 1. Agent role instructions ([builder.md](builder.md), [tester.md](tester.md), or [inspector.md](inspector.md))
 2. Mandatory Agent Launch Directives (from above)
-3. Full playbook content — general rules + role-specific rules (from Step 2). Templates (`template-*`) go to Tester only.
+3. Playbook content from Step 2 — general sections for all agents, `# Role: {Agent}` section for that agent only, `# Template:` sections for Tester only.
 4. Directive to read `AGENTS.md` for project-specific rules
 5. Current `.autocraft/journey-state.md`
 6. Any agent-routed feedback from `.autocraft/feedback-log.md`
@@ -427,7 +436,7 @@ ALL of:
 
 ## Templates
 
-The playbook provides the platform-specific test base class template (`template-*`). The Orchestrator includes the template in the Tester's prompt (Step 8). Copy it into the test target if not already present. It provides:
+The playbook provides the platform-specific test base class template (in the `# Template:` section). The Orchestrator includes the template in the Tester's prompt (Step 8). Copy it into the test target if not already present. It provides:
 - Screenshot capture with dedup and timing
 - Setup/teardown lifecycle
 - Timing log for the Orchestrator's watcher

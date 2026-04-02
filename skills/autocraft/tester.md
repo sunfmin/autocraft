@@ -141,7 +141,7 @@ JourneyTestCase includes a watchdog timer that auto-captures a screenshot + acce
 
 ## Tester Step 3: Set Up Real Test Content
 
-Before testing features that need input, ensure real content is available. The playbook provides platform-specific methods for generating real test content (`role-tester-{platform}.md`).
+Before testing features that need input, ensure real content is available. The playbook provides platform-specific methods for generating real test content (in the `# Role: Tester` section).
 
 ### Bypass flag ban
 Flags that bypass real processing are BANNED. The playbook lists platform-specific banned flags. The ONLY acceptable configuration flags set app state without bypassing functionality.

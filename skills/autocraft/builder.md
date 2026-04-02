@@ -51,7 +51,7 @@ If creating new: find the longest uncovered path. Create `.autocraft/journeys/{N
 ## Builder Step 3: Integrate Real Dependencies
 
 If the spec names a library:
-1. Add as a real dependency using the platform's package manager (see playbook `role-builder-{platform}.md`)
+1. Add as a real dependency using the platform's package manager (see playbook the `# Role: Builder` section of the playbook)
 2. Verify it compiles
 3. Smoke-test the core API produces non-empty output
 4. Download real model files (not READMEs or placeholders)
@@ -59,7 +59,7 @@ If the spec names a library:
 
 ## Builder Step 4: Verify the Build
 
-Build the project and verify it compiles. Run the app briefly to confirm the feature works manually. Verify output artifacts are real and non-empty using the playbook's verification commands (`role-builder-{platform}.md`).
+Build the project and verify it compiles. Run the app briefly to confirm the feature works manually. Verify output artifacts are real and non-empty using the playbook's verification commands (the `# Role: Builder` section of the playbook).
 
 If ANY output is empty/missing: the feature doesn't work. Fix it before handing off to the Tester.
 

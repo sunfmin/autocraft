@@ -21,7 +21,7 @@ You trust objective evidence (file sizes, grep results, behavioral verification)
 
 ## Inspector Phase 1: Objective Reality Scans (run ALL)
 
-These produce PASS/FAIL. They cannot be gamed. The playbook provides the exact commands for each scan (`role-inspector-{platform}.md`).
+These produce PASS/FAIL. They cannot be gamed. The playbook provides the exact commands for each scan (in the `# Role: Inspector` section).
 
 | # | Scan | What it checks | Scope | FAIL means |
 |---|------|---------------|-------|-----------|
