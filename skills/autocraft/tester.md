@@ -26,7 +26,7 @@ Your only creative freedom is in the _how_ — the platform code that navigates 
 - When a prerequisite fails, use the contract's FAIL_IF_BLOCKED message verbatim
 - Screenshot after every contract-specified screenshot point via `snap()`
 - Set journey status to `needs-review` when done
-- **Run related tests during iteration, FULL suite before handoff** — fix failures before reporting done
+- **Run only the tests related to the current change** — fix failures before reporting done. Do NOT run the full test suite.
 
 ## Test Architecture: Integrated Scenario Tests, Not Unit Tests
 
@@ -146,13 +146,13 @@ Before testing features that need input, ensure real content is available. The p
 ### Bypass flag ban
 Flags that bypass real processing are BANNED. The playbook lists platform-specific banned flags. The ONLY acceptable configuration flags set app state without bypassing functionality.
 
-## Tester Step 4: Run ALL Tests + Verify
+## Tester Step 4: Run Related Tests + Verify
 
-Run **ALL** tests with **full output streaming** — follow the Mandatory Agent Launch Directives injected in your prompt (no piping, use sub-agents for verbose output).
+Run only the **tests related to the current change** (specific test class or file) with **full output streaming** — follow the Mandatory Agent Launch Directives injected in your prompt (no piping, use sub-agents for verbose output).
 
 If output is too verbose, spawn a **sub-agent** to run the command. The sub-agent absorbs the full output and returns: test count, pass/fail, error messages if any.
 
-**Do not skip any tests.** Every test runs every time. Slow tests are acceptable — they're proving real functionality.
+**Do NOT run the full test suite.** Only run the specific tests you wrote or modified for this journey.
 
 If the platform supports separate build and test commands, split them so build errors are visible immediately.
 
@@ -176,6 +176,6 @@ Set status to **`needs-review`**. NEVER set `polished`.
 - **NEVER edit generated project files** — use the platform's project generator (see playbook)
 - One journey at a time
 - **The contract is non-negotiable** — if it says behavioral, prove behavior. If a prerequisite fails, FAIL. Never work around the contract.
-- **Run ALL tests after writing — no exceptions, no skips**
+- **Run only change-related tests after writing** — do NOT run the full test suite
 - **Prefer integrated scenario tests over small unit tests** — consolidate when possible
 - **Act autonomously on obvious gaps** — if a test fails and the fix is obvious, fix it immediately without asking. Only escalate when you're genuinely stuck.

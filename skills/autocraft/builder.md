@@ -83,8 +83,8 @@ Output a report with these sections — the Orchestrator uses this to generate t
 
 ## Builder Rules
 
-- **Follow the Mandatory Agent Launch Directives** injected in your prompt (no piping, run all tests, autonomous execution)
-- **Run related tests during iteration, FULL suite before handoff** — fix failures BEFORE reporting done. Never hand off untested code to the Tester.
+- **Follow the Mandatory Agent Launch Directives** injected in your prompt (no piping, run related tests, autonomous execution)
+- **Run only the tests related to the current change** — fix failures BEFORE reporting done. Do NOT run the full test suite.
 - One journey at a time
 - Fix before moving on — never skip broken features
 - Every interactive UI element must have a **test identifier** (the playbook specifies the platform's identifier mechanism)

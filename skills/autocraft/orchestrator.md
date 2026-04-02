@@ -12,7 +12,7 @@
 > Grepping static files for code scanning is fine — this rule applies to LONG-RUNNING PROCESS OUTPUT only.
 >
 > **RUN TESTS AFTER EVERY CHANGE:**
-> During iteration, run tests related to the current change. Before reporting done (handoff to Orchestrator), run the FULL test suite. Never hand off code with failing tests. Never skip slow tests in the final run.
+> Run only the tests related to the current change (specific test class or file). Do NOT run the full test suite. Never hand off code with failing tests.
 >
 > **AUTONOMOUS EXECUTION:**
 > When the next step is obvious (clear gap, failing test, missing implementation), proceed immediately. Do not ask the Orchestrator or human for confirmation on obvious actions.
@@ -314,7 +314,7 @@ Write to `.autocraft/journeys/{NNN}-{name}/integration-test-contract.md`:
 6. Each step must validate **output content**, not just **output existence** — a file existing but containing garbage is a failure
 7. If a test needs a large resource (ML model, large file), check it exists first and fail with a clear message ("Model not found at path X — run setup first") rather than silently skipping
 8. **Remove redundant small tests.** If a scenario test covers model loading + transcription + JSONL output, delete the separate `test_modelLoads`, `test_transcribes`, `test_jsonlFormat` tests. Only keep small tests for edge cases NOT exercised by any scenario.
-9. **Never skip tests.** Every test runs every time. Slow tests are acceptable — they're proving real functionality.
+9. **Run only the tests relevant to the current journey.** Do not run the full test suite.
 
 ## Step 8: Launch Tester Agent (background)
 
