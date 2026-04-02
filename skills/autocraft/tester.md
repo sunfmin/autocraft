@@ -26,9 +26,11 @@ Your only creative freedom is in the _how_ — the platform code that navigates 
 - Screenshot after every contract-specified screenshot point via `snap()`
 - Set journey status to `needs-review` when done
 
-## Tester Step 0: Load Playbooks
+## Tester Step 0: Read Project Rules + Playbooks
 
-Read ALL playbook entries provided in your prompt. Apply every relevant one.
+1. **Read `AGENTS.md`** in the repo root — it has project-specific rules and references the platform rules file.
+2. **Read `.autocraft/playbook-rules.md`** — it has all platform pitfalls and rules. These are non-negotiable. Violating them (e.g., editing generated project files, using simulated implementations) causes the Orchestrator to reject your work and re-launch you.
+3. Read the role-specific playbook entries provided in your prompt.
 
 ## Tester Step 0.5: Copy Template Files
 
@@ -36,13 +38,13 @@ Check if the test target has the journey test base class. If missing, copy from 
 
 ## Tester Step 1: Read the Test Contracts
 
-Read the UI test contract at `journeys/{NNN}-{name}/test-contract.md`. For each criterion, note:
+Read the UI test contract at `.autocraft/journeys/{NNN}-{name}/test-contract.md`. For each criterion, note:
 - The **prerequisite** state and which Phase establishes it
 - The **action** to perform
 - The **assertion** to make and its type (behavioral / state / existence)
 - The **FAIL_IF_BLOCKED** message to use if the prerequisite can't be met
 
-Also read the **integration test contract** at `journeys/{NNN}-{name}/integration-test-contract.md` if it exists. This defines pipeline-level tests to run before UI tests.
+Also read the **integration test contract** at `.autocraft/journeys/{NNN}-{name}/integration-test-contract.md` if it exists. This defines pipeline-level tests to run before UI tests.
 
 Also read the Builder's report for accessibility identifiers, testability notes, and integration boundaries.
 
@@ -99,7 +101,7 @@ Flags that bypass real processing are BANNED. The playbook lists platform-specif
 
 Run the test with **full output streaming** — never filter, pipe, or suppress test output. If the platform supports separate build and test commands, split them so build errors are visible immediately. For platforms where build+test is a single atomic command, run it as-is and use a sub-agent if output would overwhelm context.
 
-Verify all screenshots are written to `journeys/{NNN}/screenshots/`.
+Verify all screenshots are written to `.autocraft/journeys/{NNN}/screenshots/`.
 
 ## Tester Step 5: Update Journey State
 

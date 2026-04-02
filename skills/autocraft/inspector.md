@@ -61,7 +61,7 @@ If unit tests exist but fail → verdict = `needs-extension` immediately. Unit t
 If unit tests pass but UI tests fail → investigate whether the failure is a test issue or production issue.
 
 ### 2b. Screenshot Review
-Read ALL screenshots in `journeys/{NNN}/screenshots/`. For each screenshot, evaluate:
+Read ALL screenshots in `.autocraft/journeys/{NNN}/screenshots/`. For each screenshot, evaluate:
 - **Visual sanity — would a real user consider this broken?** Look for: garbled or raw escape codes (ANSI sequences like `[0m`, `[27m`), placeholder/lorem-ipsum content, overlapping or clipped elements, unreadable text, blank areas where content should be, corrupted rendering. If ANY screenshot would make a user say "this is broken" → **FAIL the entire journey**, regardless of whether all criteria technically pass.
 - **Incomplete flows — is the feature stuck waiting for input?** Look for: confirmation dialogs, permission prompts, error messages, loading spinners, CLI tools asking questions (e.g., "Enter to confirm", "Y/n"), login screens. If a screenshot shows a feature that started but didn't finish because it's blocked on user interaction → **FAIL**. The Builder must handle the interaction automatically (pre-configure, auto-confirm, or bypass the prompt).
 - Does it show a feature WORKING (real content) or just EXISTING (empty)?
@@ -91,7 +91,7 @@ A criterion has genuine evidence when the test **performed the action described 
 - `polished`: ALL scans pass, score >= 90%, every criterion has behavioral evidence
 - `needs-extension`: any scan failed, or score < 90%, or any criterion lacks evidence. List EVERY specific failure with file:line references so Builder knows exactly what to fix.
 
-Write verdict to `journey-refinement-log.md` (append, never overwrite).
+Write verdict to `.autocraft/journey-refinement-log.md` (append, never overwrite).
 
 ## Inspector Phase 4: Improve Instructions
 

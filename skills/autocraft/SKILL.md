@@ -15,7 +15,7 @@ Five agents. Strict roles. No self-grading. Human in the loop.
 Human ◄──► Analyst (foreground agent)
                │
                ├──► spec.md (writes/updates)
-               ├──► feedback-log.md (routes feedback)
+               ├──► .autocraft/feedback-log.md (routes feedback)
                │
                ▼
            Orchestrator (you) ──► Builder (background agent)
@@ -75,7 +75,7 @@ gh gist view <gist-id> --files
 
 **Error handling:** If `gh gist view` fails, print the error, ask the user to verify the gist URL and run `gh auth status`, and do not proceed until the spec is readable.
 
-The Orchestrator detects the source type at startup and stores it in `journey-loop-state.md` as `Spec source: gist:<gist-id>` or `Spec source: file:<path>`. All agents read the spec through a consistent method — the Orchestrator fetches the latest content and includes it in each agent's prompt. The Analyst writes spec updates to a temp file then pushes via `gh api`.
+The Orchestrator detects the source type at startup and stores it in `.autocraft/journey-loop-state.md` as `Spec source: gist:<gist-id>` or `Spec source: file:<path>`. All agents read the spec through a consistent method — the Orchestrator fetches the latest content and includes it in each agent's prompt. The Analyst writes spec updates to a temp file then pushes via `gh api`.
 
 ---
 
@@ -83,15 +83,15 @@ The Orchestrator detects the source type at startup and stores it in `journey-lo
 
 | File | Written by | Read by |
 |------|-----------|---------|
-| `journeys/*/` | Builder (code), Tester (tests+screenshots) | Inspector, Orchestrator |
-| `journeys/*/test-contract.md` | **Orchestrator** | **Tester** (implements it), Inspector (validates against it) |
-| `journeys/*/integration-test-contract.md` | **Orchestrator** | **Tester** (implements unit tests), Inspector (validates) |
-| `journeys/*/screenshot-timing.jsonl` | Tester (snap helper) | Orchestrator (watcher) |
-| `journey-state.md` | Tester (`needs-review`), Inspector (`polished`/`needs-extension`) | All |
-| `journey-refinement-log.md` | Inspector | Orchestrator |
-| `journey-loop-state.md` | Orchestrator | Orchestrator (resume) |
+| `.autocraft/journeys/*/` | Builder (code), Tester (tests+screenshots) | Inspector, Orchestrator |
+| `.autocraft/journeys/*/test-contract.md` | **Orchestrator** | **Tester** (implements it), Inspector (validates against it) |
+| `.autocraft/journeys/*/integration-test-contract.md` | **Orchestrator** | **Tester** (implements unit tests), Inspector (validates) |
+| `.autocraft/journeys/*/screenshot-timing.jsonl` | Tester (snap helper) | Orchestrator (watcher) |
+| `.autocraft/journey-state.md` | Tester (`needs-review`), Inspector (`polished`/`needs-extension`) | All |
+| `.autocraft/journey-refinement-log.md` | Inspector | Orchestrator |
+| `.autocraft/journey-loop-state.md` | Orchestrator | Orchestrator (resume) |
 | `AGENTS.md` (repo root) | Inspector | Builder, Tester (each restart) |
-| `feedback-log.md` | Analyst | Orchestrator, Builder, Tester, Inspector |
+| `.autocraft/feedback-log.md` | Analyst | Orchestrator, Builder, Tester, Inspector |
 
 ---
 
@@ -107,7 +107,7 @@ Default registry gist: `bca7073d567ca8b7ba79ff4bad5fb2c5`. Override via `.autocr
 
 You are the skeptical project manager. You don't write code. You don't review screenshots. You manage handoffs and ensure neither the Builder, Tester, nor Inspector cuts corners. You commit ONLY when the Inspector approves.
 
-**Analyst integration — MANDATORY:** Every invocation where `$ARGUMENTS` contains natural language (not a file path or "continue") MUST launch the Analyst FIRST. The Analyst logs feedback to `feedback-log.md` and optionally updates `spec.md`. The Orchestrator MUST NOT skip the Analyst and go directly to the Builder when the user provides feedback. During the loop, check `feedback-log.md` at every handoff point for new entries. Route feedback items to the appropriate agent as part of their next launch directive.
+**Analyst integration — MANDATORY:** Every invocation where `$ARGUMENTS` contains natural language (not a file path or "continue") MUST launch the Analyst FIRST. The Analyst logs feedback to `.autocraft/feedback-log.md` and optionally updates `spec.md`. The Orchestrator MUST NOT skip the Analyst and go directly to the Builder when the user provides feedback. During the loop, check `.autocraft/feedback-log.md` at every handoff point for new entries. Route feedback items to the appropriate agent as part of their next launch directive.
 
 ```dot
 digraph orchestrator_loop {
@@ -169,34 +169,122 @@ digraph orchestrator_loop {
 | `$ARGUMENTS` pattern | Intent | Action |
 |---------------------|--------|--------|
 | Empty, `continue`, or a file/gist path | Resume build loop | Skip Analyst if spec exists |
-| Natural language describing problems, bugs, or desired changes | **Feedback** | **Launch Analyst** to classify, log to `feedback-log.md`, and optionally update `spec.md` |
-| Natural language describing new features or requirements | **New requirement** | **Launch Analyst** to update `spec.md` and log to `feedback-log.md` |
+| Natural language describing problems, bugs, or desired changes | **Feedback** | **Launch Analyst** to classify, log to `.autocraft/feedback-log.md`, and optionally update `spec.md` |
+| Natural language describing new features or requirements | **New requirement** | **Launch Analyst** to update `spec.md` and log to `.autocraft/feedback-log.md` |
 
 **Detection heuristic:** If `$ARGUMENTS` is NOT one of [`continue`, a file path, a gist URL, a bare gist ID, or empty], treat it as human feedback and launch the Analyst.
 
 ### When Analyst is needed:
 1. Launch the **Analyst** (foreground) with [analyst.md](analyst.md) contents and the human's message
-2. The Analyst classifies the feedback, writes to `feedback-log.md`, and optionally updates `spec.md`
-3. After the Analyst completes, the Orchestrator reads `feedback-log.md` for routed items and proceeds to Step 2
+2. The Analyst classifies the feedback, writes to `.autocraft/feedback-log.md`, and optionally updates `spec.md`
+3. After the Analyst completes, the Orchestrator reads `.autocraft/feedback-log.md` for routed items and proceeds to Step 2
 
 ### When Analyst is NOT needed:
 - `$ARGUMENTS` is `continue` or a spec path AND `spec.md` exists → skip directly to Step 2
-- But STILL check `feedback-log.md` for unresolved items at every handoff point
+- But STILL check `.autocraft/feedback-log.md` for unresolved items at every handoff point
 
 ### Spec updates
-Only the Analyst can modify `spec.md`. When user feedback implies a spec change (new requirement, changed behavior, removed feature), the Analyst updates the spec AND logs to `feedback-log.md`. The Orchestrator re-reads the spec in Step 3 to pick up changes.
+Only the Analyst can modify `spec.md`. When user feedback implies a spec change (new requirement, changed behavior, removed feature), the Analyst updates the spec AND logs to `.autocraft/feedback-log.md`. The Orchestrator re-reads the spec in Step 3 to pick up changes.
 
-## Step 2: Load Playbooks (every iteration)
+## Step 2: Sync Playbooks (cached)
 
-Resolve the registry gist ID: read `.autocraft` from repo root if it exists, otherwise use default `bca7073d567ca8b7ba79ff4bad5fb2c5`. Fetch the registry, then for each registered playbook, fetch and read ALL files from its gist.
+Playbooks are cached locally in `.autocraft/` to avoid re-fetching unchanged content every iteration.
 
-**Role-specific entries** (prefixed `role-{agent}-`) contain the platform-specific commands, code patterns, and templates that the corresponding agent needs. Include them in each agent's prompt alongside the pitfall entries.
+### File layout
 
-**Template entries** (prefixed `template-`) contain base class code or boilerplate. The Builder and Tester copy these into the project as needed.
+```
+.autocraft/
+├── playbook-rules.md          # Auto-generated: all pitfall/rule entries (NEVER hand-edit)
+├── role-builder.md             # Auto-generated: role-specific for Builder
+├── role-tester.md              # Auto-generated: role-specific for Tester
+├── role-inspector.md           # Auto-generated: role-specific for Inspector
+├── role-orchestrator.md        # Auto-generated: role-specific for Orchestrator
+└── templates/                  # Auto-generated: template files
+    └── journey-test-case.md
+```
+
+`AGENTS.md` (repo root) is **user-editable** — project-specific rules, conventions, notes. It should reference the playbook cache:
+
+```markdown
+# AGENTS.md
+
+{user's project-specific rules here}
+
+## Platform Rules
+Read and follow all rules in [.autocraft/playbook-rules.md](.autocraft/playbook-rules.md).
+```
+
+### Sync protocol
+
+1. Resolve the registry gist ID: read `.autocraft` from repo root if it exists, otherwise use default `bca7073d567ca8b7ba79ff4bad5fb2c5`.
+2. Fetch the registry to get playbook gist IDs.
+3. For each playbook gist, check if the local cache is current:
+
+```bash
+REMOTE_TS=$(gh api /gists/<gist-id> --jq '.updated_at')
+LOCAL_TS=$(head -1 .autocraft/playbook-rules.md 2>/dev/null | grep -oP '(?<=playbook_updated: ).*' || echo "")
+
+if [ "$REMOTE_TS" = "$LOCAL_TS" ]; then
+  echo "Cache is current — skip full fetch"
+else
+  echo "Playbook changed — re-fetch and rebuild cache"
+fi
+```
+
+4. **If timestamps match:** read cached files locally. No network calls.
+5. **If timestamps differ (or cache missing):** do the full fetch, then rebuild the cache (see below).
+
+### Full fetch & rebuild cache (only when stale)
+
+Fetch ALL files from the playbook gist. Sort them into the cache:
+
+| Prefix/pattern | Cache location |
+|---------------|---------------|
+| No prefix (pitfalls, guides, rules) | `.autocraft/playbook-rules.md` (concatenated, timestamped) |
+| `role-{agent}-*` | `.autocraft/role-{agent}.md` |
+| `template-*` | `.autocraft/templates/{name}.md` |
+
+Write `.autocraft/playbook-rules.md`:
+
+```markdown
+<!-- playbook_updated: 2026-03-30T12:19:55Z -->
+# Platform Rules — Auto-generated from playbooks. Do not edit.
+
+---
+{concatenate all pitfall/guide/rule entries here, each as a section with --- separators}
+```
+
+### Ensuring AGENTS.md references the cache
+
+If `AGENTS.md` exists but does NOT contain a reference to `.autocraft/playbook-rules.md`, append:
+
+```markdown
+
+## Platform Rules
+Read and follow all rules in [.autocraft/playbook-rules.md](.autocraft/playbook-rules.md).
+```
+
+If `AGENTS.md` does not exist, create it with a minimal scaffold:
+
+```markdown
+# AGENTS.md
+
+## Platform Rules
+Read and follow all rules in [.autocraft/playbook-rules.md](.autocraft/playbook-rules.md).
+```
+
+The user can then add project-specific rules above or below the reference.
+
+### Why this design
+
+- **AGENTS.md stays user-editable** — the Orchestrator never overwrites user content
+- **Playbook rules are cached locally** — one API call to check freshness, full fetch only when stale
+- **`AGENTS.md` is loaded by the harness** into every agent's context. The reference directive ensures agents also read the playbook rules file.
+- **Adding a new playbook entry** = update the gist → next run detects the timestamp change → cache rebuilds → all agents see it
 
 ## Step 3: Build Acceptance Criteria Master List
 
-Read the spec in full (local file or `gh gist view <gist-id> -f spec.md`). For every requirement, extract EVERY acceptance criterion. Write to `journey-loop-state.md`:
+Read the spec in full (local file or `gh gist view <gist-id> -f spec.md`). For every requirement, extract EVERY acceptance criterion. Write to `.autocraft/journey-loop-state.md`:
 
 ```markdown
 # Journey Loop State
@@ -214,10 +302,10 @@ Total acceptance criteria: M
 |----|-------------|-------------|----------------|
 ```
 
-Read `journey-state.md` to determine what to work on:
-1. Check `feedback-log.md` for **blocking** items — address these first
+Read `.autocraft/journey-state.md` to determine what to work on:
+1. Check `.autocraft/feedback-log.md` for **blocking** items — address these first
 2. Any `in-progress` or `needs-extension` → work on that next
-3. Check `feedback-log.md` for **important** items — incorporate into next agent launch
+3. Check `.autocraft/feedback-log.md` for **important** items — incorporate into next agent launch
 4. If none, pick next uncovered spec requirement
 
 ## Step 4: Pre-Build Simulation Scan
@@ -230,21 +318,31 @@ If any scan is not CLEAN: include in Builder's directive as **first priority to 
 
 Spawn a background Agent with:
 1. [builder.md](builder.md) contents
-2. Full `AGENTS.md` content (if exists)
-3. Full playbook contents (all registered playbooks)
-4. Current `journey-state.md`
+2. Directive to read `AGENTS.md` and `.autocraft/playbook-rules.md` (agents read these files themselves — the harness auto-loads `AGENTS.md`, and the agent reads `.autocraft/playbook-rules.md` per Step 0)
+3. `.autocraft/role-builder.md` content (role-specific playbook, cached locally)
+4. Current `.autocraft/journey-state.md`
 5. Directive: which journey to build/extend, plus any simulation fixes from Step 4
-6. Any **Builder-routed feedback** from `feedback-log.md` (unresolved items where `Routed to: Builder`)
+6. Any **Builder-routed feedback** from `.autocraft/feedback-log.md` (unresolved items where `Routed to: Builder`)
 
 The Builder implements production features and creates the journey directory, but does NOT write test files.
 
 Wait for Builder to complete.
 
+### Post-Builder Gate: AGENTS.md Compliance Check
+
+After the Builder completes, verify it followed the rules in `AGENTS.md`. Run the platform-specific scan commands from the playbook (`role-orchestrator-{platform}.md`) plus these general checks:
+
+1. **Generated project files** — if a project generator config exists (e.g., `project.yml`), check `git diff --name-only` for direct edits to generated files (e.g., `.pbxproj`). Violation = re-launch Builder.
+2. **Simulation infrastructure** — re-run the pre-build simulation scan. Any new violations = re-launch Builder.
+3. **Any other AGENTS.md rule violations** — read the diff, compare against AGENTS.md rules.
+
+If ANY violation: **re-launch the Builder** with the specific violation and directive to read `AGENTS.md` and fix it.
+
 ## Step 6: Generate Test Contract (Orchestrator does this — NOT the Tester)
 
 **This is the critical structural step.** The Orchestrator — not the Tester — defines what the test must prove. The Tester only implements it.
 
-Using the spec's acceptance criteria AND the Builder's testability contract, generate a **test contract** and write it to `journeys/{NNN}-{name}/test-contract.md`:
+Using the spec's acceptance criteria AND the Builder's testability contract, generate a **test contract** and write it to `.autocraft/journeys/{NNN}-{name}/test-contract.md`:
 
 ```markdown
 # Test Contract: Journey {NNN}
@@ -308,11 +406,11 @@ If a component can't be tested in isolation (e.g., business logic is tangled wit
 
 The Builder refactors, the Orchestrator re-analyzes, then generates the test contract.
 
-**Loop limit:** If after 2 refactoring attempts the component is still not testable in isolation, skip integration tests for this journey and note the gap in `journey-refinement-log.md`.
+**Loop limit:** If after 2 refactoring attempts the component is still not testable in isolation, skip integration tests for this journey and note the gap in `.autocraft/journey-refinement-log.md`.
 
 ### Integration test contract
 
-Write to `journeys/{NNN}-{name}/integration-test-contract.md`:
+Write to `.autocraft/journeys/{NNN}-{name}/integration-test-contract.md`:
 
 ```markdown
 # Integration Test Contract: Journey {NNN}
@@ -345,20 +443,20 @@ Write to `journeys/{NNN}-{name}/integration-test-contract.md`:
 
 After the test contracts are written, spawn a background Tester Agent with:
 1. [tester.md](tester.md) contents
-2. Full `AGENTS.md` content (if exists)
-3. Full playbook contents (all registered playbooks)
+2. Directive to read `AGENTS.md` and `.autocraft/playbook-rules.md` (same as Builder — harness auto-loads `AGENTS.md`, agent reads playbook rules per Step 0)
+3. `.autocraft/role-tester.md` content (role-specific playbook, cached locally)
 4. The spec file path
-5. **The UI test contract** (`journeys/{NNN}-{name}/test-contract.md`)
-6. **The integration test contract** (`journeys/{NNN}-{name}/integration-test-contract.md`) if it exists
+5. **The UI test contract** (`.autocraft/journeys/{NNN}-{name}/test-contract.md`)
+6. **The integration test contract** (`.autocraft/journeys/{NNN}-{name}/integration-test-contract.md`) if it exists
 7. The Builder's report (accessibility identifiers, testability notes, integration boundaries)
 8. Directive: implement and run integration tests first, then UI tests
 9. If this is a re-launch after rejection: include the specific failure list with line numbers
-10. Any **Tester-routed feedback** from `feedback-log.md` (unresolved items where `Routed to: Tester`)
+10. Any **Tester-routed feedback** from `.autocraft/feedback-log.md` (unresolved items where `Routed to: Tester`)
 
 **Also launch the Timing Watcher** — poll `screenshot-timing.jsonl` every 5s, kill test on unexcused SLOW entries:
 
 ```bash
-TIMING_FILE="journeys/{NNN}-{name}/screenshot-timing.jsonl"
+TIMING_FILE=".autocraft/journeys/{NNN}-{name}/screenshot-timing.jsonl"
 SEEN=0
 while true; do
   if [ -f "$TIMING_FILE" ]; then
@@ -379,6 +477,10 @@ done
 ```
 
 Wait for Tester to complete.
+
+### Post-Tester Gate: AGENTS.md Compliance Check
+
+Same checks as Post-Builder Gate. If ANY AGENTS.md rule violation: **re-launch the Tester** with the specific violation.
 
 ## Step 9: Validate Contract Compliance (structural — before Inspector)
 
@@ -409,11 +511,11 @@ Wait for Inspector verdict.
 
 **If Inspector set `polished`:**
 1. Commit all changes (journey files, screenshots, app code, updated journey-state.md)
-2. Update `journey-loop-state.md` with iteration results
+2. Update `.autocraft/journey-loop-state.md` with iteration results
 3. Move to next uncovered criteria
 
 **If Inspector set `needs-extension`:**
-1. Read Inspector's specific failure list from `journey-refinement-log.md`
+1. Read Inspector's specific failure list from `.autocraft/journey-refinement-log.md`
 2. DO NOT commit
 3. Route each failure to the right agent:
    - Production code issue (feature doesn't work, stub, missing implementation) → re-launch **Builder**
@@ -524,7 +626,7 @@ This is strictly better than:
 - **No iteration limit.** Loop runs until user stops or stop condition met.
 - **Stall detection:** If Builder or Tester produces no changes for 2 consecutive iterations, log and re-launch with Inspector's last failure list.
 - **Only the Analyst can modify the spec** (local `spec.md` or gist) — read-only for all other agents. The Analyst must confirm changes with the human before writing.
-- **feedback-log.md is append-only** — entries are never deleted, only marked resolved.
+- **`.autocraft/feedback-log.md` is append-only** — entries are never deleted, only marked resolved.
 - **Playbook gists are append-only.** New entries can be added; existing entries should not be deleted.
 - Recurring tasks auto-expire after 7 days if run via `/loop`.
 
