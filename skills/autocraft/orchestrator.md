@@ -16,6 +16,9 @@
 >
 > **AUTONOMOUS EXECUTION:**
 > When the next step is obvious (clear gap, failing test, missing implementation), proceed immediately. Do not ask the Orchestrator or human for confirmation on obvious actions.
+>
+> **ZERO `waitForExistence` (UI tests):**
+> `waitForExistence` is BANNED from test code. Zero occurrences — no exceptions. Use `waitAndSnap(element, timeout:, "FAIL message")` for ALL waits. Step 9 greps for `waitForExistence` and auto-rejects any match.
 
 **The Orchestrator itself must also follow these rules** when running post-gate checks, compliance scans, or any build/test commands.
 
@@ -365,6 +368,12 @@ For each criterion in the contract:
 6. **SCREENSHOT captured?** — for every criterion with a SCREENSHOT field in the contract, grep the test file for the screenshot capture call with that name. If any contract-specified screenshot is missing → FAIL
 7. **Single-flow state machine?** — UI test contracts define a Phase-ordered state machine. Verify the test implements criteria within a **single test function** that follows the Phase sequence (Phase 1 → Phase 2 → ... → Phase N). Splitting contract phases into separate test functions breaks the state machine — each function starts fresh, losing state from prior phases. Exceptions: criteria that require app relaunch or contradictory preconditions MAY be in separate functions.
 8. **Base class used correctly?** — if the project has a journey test base class, verify the test subclasses it AND calls the parent setup method instead of duplicating setup logic → FAIL
+9. **Zero `waitForExistence`?** — grep the test file for ANY occurrence of `waitForExistence`. **Every single match is a FAIL — no exceptions.** This is the most common Tester violation and MUST be checked mechanically:
+   ```bash
+   grep -n 'waitForExistence' "$TEST_FILE"
+   # If ANY lines are returned → FAIL. Re-launch Tester with each line number and the required replacement:
+   # "Line N: waitForExistence is BANNED. Replace with: waitAndSnap(element, timeout: N, \"FAIL('message')\")"
+   ```
 
 The playbook provides the platform-specific grep patterns, test file conventions, and code examples for each check. The Orchestrator constructs these checks dynamically from the contract.
 

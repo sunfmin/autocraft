@@ -128,7 +128,7 @@ For each criterion in the contract:
 ### Screenshot helper
 Subclass `JourneyTestCase` from the [JourneyTester](https://github.com/sunfmin/JourneyTester) package. Use `snap("label")` to capture screenshots + accessibility trees, `step("name") { }` for named phases, and `waitAndSnap(element, "msg")` for conditional waits. See the [JourneyTester README](https://raw.githubusercontent.com/sunfmin/JourneyTester/refs/heads/main/README.md) for full API.
 
-**NEVER use raw `waitForExistence` for assertions** — always use `waitAndSnap()` which captures artifacts on failure. The built-in watchdog auto-captures if >10s pass between `snap()` calls.
+`waitForExistence` is BANNED from test code. Zero occurrences — no exceptions. Use `waitAndSnap(element, timeout:, "FAIL message")` for ALL waits. The Orchestrator's Step 9 greps for `waitForExistence` and auto-rejects any match.
 
 ## Tester Step 3: Set Up Real Test Content
 
@@ -159,7 +159,7 @@ Set status to **`needs-review`**. NEVER set `polished`.
 ## Tester Rules
 
 - No hard-coded delays (no `sleep()` or equivalent)
-- **NEVER use raw `waitForExistence` for assertions** — use `waitAndSnap()` (see playbook)
+- **`waitForExistence` is BANNED** — zero occurrences allowed in test code. All waits MUST use `waitAndSnap()`. The Orchestrator greps for any match and auto-rejects.
 - Use instant element checks after the first wait per view transition (see playbook for platform patterns)
 - Assert with the platform's assertion macros for every critical step — never conditional guards (see "Forbidden Guard Patterns")
 - Every interaction must verify a **result**, not just that the element still exists
