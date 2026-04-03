@@ -340,7 +340,11 @@ Tests use [JourneyTester](https://github.com/sunfmin/JourneyTester) — a macOS 
 
 See the [JourneyTester README](https://raw.githubusercontent.com/sunfmin/JourneyTester/refs/heads/main/README.md) for setup, API, and artifact format.
 
-After tests complete, run `bash link-artifacts.sh` to create the `.journeytester` symlink in the project root (resolves xctrunner sandbox redirection).
+After tests complete, create a symlink from the project root to the xctrunner sandbox so artifacts are accessible:
+
+```bash
+ln -sfn ~/Library/Containers/.xctrunner/Data/.journeytester <project-root>/.journeytester
+```
 
 Wait for Tester to complete.
 

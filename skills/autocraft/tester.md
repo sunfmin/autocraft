@@ -149,7 +149,7 @@ If the platform supports separate build and test commands, split them so build e
 
 After running:
 1. **Check for failures** — fix any failing tests before proceeding
-2. In `ui` mode: Run `bash link-artifacts.sh` to resolve sandbox paths. Then **read each screenshot** in `.journeytester/journeys/{name}/artifacts/` to visually verify what the app showed.
+2. In `ui` mode: Create a symlink from the project root to the xctrunner sandbox (`ln -sfn ~/Library/Containers/.xctrunner/Data/.journeytester <project-root>/.journeytester`). Then **read each screenshot** in `.journeytester/journeys/{name}/artifacts/` to visually verify what the app showed.
 3. **Report test count and results** — "87 tests, 0 failures"
 
 ## Tester Step 5: Update Journey State
