@@ -63,7 +63,7 @@ If unit tests pass but UI tests fail → investigate whether the failure is a te
 
 **Skip this section in `integration` mode.** In integration mode, the Inspector relies entirely on objective scans (Phase 1) and assertion honesty (Phase 2d) — there are no screenshots to review.
 
-In `ui` mode, read ALL screenshots in `.autocraft/journeys/{NNN}/screenshots/`. For each screenshot, evaluate:
+In `ui` mode, read ALL screenshots in `.journeytester/journeys/{name}/artifacts/` (PNG files). For each screenshot, evaluate:
 - **Visual sanity — would a real user consider this broken?** Look for: garbled or raw escape codes (ANSI sequences like `[0m`, `[27m`), placeholder/lorem-ipsum content, overlapping or clipped elements, unreadable text, blank areas where content should be, corrupted rendering. If ANY screenshot would make a user say "this is broken" → **FAIL the entire journey**, regardless of whether all criteria technically pass.
 - **Incomplete flows — is the feature stuck waiting for input?** Look for: confirmation dialogs, permission prompts, error messages, loading spinners, CLI tools asking questions (e.g., "Enter to confirm", "Y/n"), login screens. If a screenshot shows a feature that started but didn't finish because it's blocked on user interaction → **FAIL**. The Builder must handle the interaction automatically (pre-configure, auto-confirm, or bypass the prompt).
 - Does it show a feature WORKING (real content) or just EXISTING (empty)?

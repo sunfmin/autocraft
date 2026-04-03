@@ -334,31 +334,13 @@ Launch Tester (background) with standard items plus:
 - Directive: implement and run integration tests first, then UI tests (integration mode: integration tests only)
 - If re-launch after rejection: the specific failure list with line numbers
 
-### Screenshots (UI mode only)
+### Artifacts (UI mode only)
 
-During test execution, JourneyTestCase writes screenshots to `/tmp/autocraft-screenshots/{journeyName}/` (outside xctrunner sandbox, accessible in real-time). The watchdog timer in JourneyTestCase auto-captures if >10s pass between screenshots and dumps the full accessibility tree (all windows) to a `.txt` file — this catches tests stuck on `waitForExistence`.
+Tests use [JourneyTester](https://github.com/sunfmin/JourneyTester) — a macOS UI test framework that produces AI-readable artifacts. Each `snap()` call writes screenshots + compact accessibility trees to `.journeytester/journeys/<name>/artifacts/`. The watchdog auto-captures if >10s pass between `snap()` calls, preventing silent hangs.
 
-After xcodebuild completes, the Orchestrator (or Tester agent) copies screenshots to the project directory with dedup:
+See the [JourneyTester README](https://raw.githubusercontent.com/sunfmin/JourneyTester/refs/heads/main/README.md) for setup, API, and artifact format.
 
-```bash
-SRCDIR="/tmp/autocraft-screenshots/{journeyName}"
-DSTDIR=".autocraft/journeys/{journeyName}/screenshots"
-mkdir -p "$DSTDIR"
-
-# Dedup copy: skip identical PNGs by content hash
-PREV_HASH=""
-for f in $(ls "$SRCDIR"/*.png 2>/dev/null | sort); do
-    HASH=$(md5 -q "$f")
-    if [ "$HASH" != "$PREV_HASH" ]; then
-        cp "$f" "$DSTDIR/"
-        PREV_HASH="$HASH"
-    fi
-done
-# Copy element dumps (no dedup)
-cp "$SRCDIR"/*.txt "$DSTDIR/" 2>/dev/null || true
-```
-
-This runs OUTSIDE the sandbox (orchestrator/tester agent process), so it can write to the project directory.
+After tests complete, run `bash link-artifacts.sh` to create the `.journeytester` symlink in the project root (resolves xctrunner sandbox redirection).
 
 Wait for Tester to complete.
 
@@ -436,12 +418,9 @@ ALL of:
 
 ## Templates
 
-The playbook provides the platform-specific test base class template (in the `# Template:` section). The Orchestrator includes the template in the Tester's prompt (Step 8). Copy it into the test target if not already present. It provides:
-- Screenshot capture with dedup and timing
-- Setup/teardown lifecycle
-- Timing log for the Orchestrator's watcher
+For macOS UI tests, the base class is `JourneyTestCase` from the [JourneyTester](https://github.com/sunfmin/JourneyTester) SPM package. Add it as a dependency and subclass it. See the [JourneyTester README](https://raw.githubusercontent.com/sunfmin/JourneyTester/refs/heads/main/README.md) for setup, API reference, and artifact format.
 
-Usage patterns and code examples are documented in the playbook template entry.
+The playbook may provide additional platform-specific templates (in `# Template:` sections) for non-macOS platforms. The Orchestrator includes these in the Tester's prompt (Step 8).
 
 ---
 

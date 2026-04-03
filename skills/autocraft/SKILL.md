@@ -121,7 +121,7 @@ The Orchestrator detects the source type at startup and stores it in `.autocraft
 | `.autocraft/journeys/*/` | Builder (code), Tester (tests+screenshots) | Inspector, Orchestrator |
 | `.autocraft/journeys/*/test-contract.md` | **Orchestrator** | **Tester** (implements it), Inspector (validates against it) |
 | `.autocraft/journeys/*/integration-test-contract.md` | **Orchestrator** | **Tester** (implements unit tests), Inspector (validates) |
-| `/tmp/autocraft-screenshots/{journeyName}/*.png` | Tester (snap/waitAndSnap) | Orchestrator (copies to project dir post-test with dedup) |
+| `.journeytester/journeys/{name}/artifacts/` | Tester (JourneyTestCase snap/waitAndSnap) | Inspector, Orchestrator |
 | `.autocraft/journey-state.md` | Tester (`needs-review`), Inspector (`polished`/`needs-extension`) | All |
 | `.autocraft/journey-refinement-log.md` | Inspector | Orchestrator |
 | `.autocraft/journey-loop-state.md` | Orchestrator | Orchestrator (resume) |
