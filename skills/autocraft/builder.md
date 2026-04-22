@@ -60,14 +60,14 @@ If ANY output is empty/missing: the feature doesn't work. Fix it before handing 
 
 ## Builder Step 5: Report (with Testability Notes)
 
-Output a report with these sections — the Orchestrator uses this to generate the test contract:
+Output a report with these sections — the Orchestrator uses this to draft the journey and/or integration test contract:
 
 1. **Journey name** and features implemented
 2. **Accessibility identifiers** — every identifier, organized by UI area
 3. **Artifacts produced** — files on disk, their paths, expected content
 4. **Testability notes** — for every acceptance criterion, document:
    - **Prerequisite state**: what state the app must be in before this criterion can be tested (e.g., "terminal session must be active, recording must be selected")
-   - **How to reach it in a UI test**: the exact sequence of UI actions (e.g., "click startRecordingButton, wait for outputArea to appear, then start+stop a recording, then click a recording row")
+   - **How to reach it via UI**: the exact sequence of UI actions the Mode B journey (or rare Mode A UI-adjacent test) must perform — e.g., "click `startRecordingButton` (accessibility id), wait for `outputArea` to exist, then start+stop a recording, then click the first element matching `recordingRow`"
    - **Observable verification**: what changes in the UI or on disk that proves the criterion works (e.g., "terminal output area appears with shell prompt text", "transcript.jsonl contains JSON lines with start/end/text/language fields")
 5. **Integration boundaries** — identify where data flows between components and could silently fail:
    - **Data pipelines**: "Component A feeds data to Component B via {mechanism}" — what format? What could go wrong?

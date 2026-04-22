@@ -1,19 +1,23 @@
 # autocraft
 
-A Claude Code skill that builds and tests from `spec.md` with real implementations, automated quality scans, and verified output. Supports UI projects (screenshot-verified), integration-only projects (pipeline-verified), and test refactoring tasks.
+A Claude Code skill that builds and tests from `spec.md` with real implementations, automated quality scans, and verified output. Two test modes, routed per acceptance criterion:
+
+- **Mode A — integration tests** (assertion-based code) for criteria whose verification is observable state: API responses, file contents, exit codes, DB rows
+- **Mode B — UI journeys** (markdown scenarios executed by a Claude instance with vision, via `driving-macos-with-wda-vision` for macOS or Playwright MCP for web) for criteria whose verification requires eyes on screen: layout, toasts, modals, visual regressions, crash-free interactions
+
+Hybrid criteria generate both artifacts; both must pass before a journey is marked polished.
 
 ## What it does
 
-- Reads your product spec and builds test journeys — UI tests (XCUITest, Playwright) for UI projects, integration tests for CLI/library/API projects
+- Reads your product spec, routes each acceptance criterion to Mode A or Mode B (or both), and builds the right artifact — assertion-based test code or executable natural-language journey
 - Five agent roles with strict separation:
   - **Analyst** — talks to the human, gathers requirements, writes and updates `spec.md`
-  - **Builder** — implements real features (no stubs, no fakes)
-  - **Tester** — writes and runs journey tests independently from the Builder
-  - **Inspector** — verifies real output with automated scans and subjective review
-  - **Orchestrator** — manages handoffs, generates test contracts, commits only after Inspector approves
+  - **Builder** — implements real features (no stubs, no fakes); emits testability notes for both modes
+  - **Tester** — Mode A: writes integration tests with platform assertion macros. Mode B: sharpens the Orchestrator's journey draft and spawns a separate Claude instance to run it with vision
+  - **Inspector** — Mode A: forensic code scans (stubs, bypass flags, vacuous assertions). Mode B: journey-structure scans (vague PASS clauses, missing hazards, evidence-verdict agreement). Subjective screenshot review in both
+  - **Orchestrator** — manages handoffs, routes criteria to modes, drafts artifacts, commits only after Inspector approves
 - Builder cannot write tests or review its own work; Tester cannot modify production code; only the Inspector can set "polished"
-- Inspector runs objective scans (file sizes, grep for stubs/bypass flags) before any subjective review
-- Tracks every acceptance criterion and won't stop until all are implemented, tested, and verified with real output (screenshots for UI, test results for integration)
+- Tracks every acceptance criterion and won't stop until all are implemented, covered by a Mode A test or Mode B journey, and verified with real output (screenshots for Mode B, test runs for Mode A)
 
 ## Installation
 
@@ -58,19 +62,26 @@ Human ◄──► Analyst (foreground)
              +-- spawns --> Builder Agent
              |               - Implements real features (no stubs)
              |               - Sets up real dependencies and content
+             |               - Emits testability notes (locators, prereqs, data flows)
              |               - CANNOT write tests or review own work
              |
-             +-- generates test contracts (what to prove)
+             +-- per criterion: routes to Mode A (integration contract)
+             |                     or Mode B (journey.md)
+             |                     or both (hybrid)
              |
              +-- spawns --> Tester Agent
-             |               - Implements test contracts as executable tests
-             |               - Runs integration tests first, then UI tests
-             |               - Screenshots every step, sets "needs-review"
+             |               Mode A: implements integration contracts as
+             |                       assertion-based test code, runs them
+             |               Mode B: sharpens journey locators/waits/PASS clauses,
+             |                       spawns a fresh Claude instance to execute
+             |                       the journey with vision + mac2.sh/Playwright
              |
              +-- spawns --> Inspector Agent
-             |               - Runs 4 objective scans (artifacts, bypass flags, stubs, assertions)
-             |               - Reviews screenshots for real content
-             |               - Sets status to "polished" or "needs-extension"
+             |               Mode A: forensic scans (stubs, bypass flags,
+             |                       vacuous assertions, silent skip guards)
+             |               Mode B: structure scans (vague PASS clauses,
+             |                       missing hazards, evidence-verdict agreement)
+             |               Both:   screenshot sanity review, spec coverage
              |
              +-- commits only when Inspector says "polished"
              +-- re-launches Builder/Tester if Inspector says "needs-extension"
@@ -81,21 +92,27 @@ Human ◄──► Analyst (foreground)
 After running, your project will contain:
 
 ```
-spec.md                        # Your product spec (read-only)
-journey-state.md               # Status of each journey
-journey-loop-state.md          # Orchestrator history and criteria master list
-journey-refinement-log.md      # Inspector scoring history
-AGENTS.md                      # Project-specific overrides written by Inspector
-journeys/
-  001-first-launch-setup/
-    journey.md                 # Steps, spec coverage, acceptance criteria
-    screenshots/               # One PNG per step
-    screenshot-timing.jsonl    # Gap timing per screenshot
-  002-.../
+spec.md                                  # Your product spec (read-only)
+AGENTS.md                                # Project-specific overrides written by Inspector
+.autocraft/
+  journey-state.md                       # Status of each journey
+  journey-loop-state.md                  # Orchestrator history + criteria master list
+  journey-refinement-log.md              # Inspector scoring history
+  feedback-log.md                        # Analyst feedback routing
+  journeys/
+    001-first-launch-setup/
+      journey.md                         # Mode B scenario (drafted by Orchestrator,
+                                         # sharpened by Tester, executed by a
+                                         # spawned Claude instance with vision)
+      integration-test-contract.md       # Mode A contract (when hybrid or integration-only)
+      screenshots/                       # Evidence screenshots from the journey executor
+    002-.../
 ```
 
 ## Requirements
 
-- **macOS apps:** Xcode + XcodeGen (`brew install xcodegen`). Platform playbooks ship inside the skill — no network or `gh` CLI needed.
-- **Web apps:** Node.js + Playwright (`npm i -D @playwright/test`)
-- A `spec.md` in the project root with requirements and acceptance criteria
+- **macOS UI projects (Mode B):** the `driving-macos-with-wda-vision` skill (provides `mac2.sh` + a running Appium instance on `:4723`). Xcode + XcodeGen (`brew install xcodegen`) for the app itself.
+- **Web UI projects (Mode B):** the Playwright MCP (`npm i -D @playwright/mcp`) or a compatible browser-automation driver the spawned executor can call.
+- **Integration tests (Mode A):** the project's native test runner — XCTest for Swift, `go test`, Jest, pytest, etc. Installed as project-level dev dependencies.
+- Platform playbooks ship inside the skill — no network or `gh` CLI needed.
+- A `spec.md` in the project root with requirements and acceptance criteria.
