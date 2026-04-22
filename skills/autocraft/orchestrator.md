@@ -105,15 +105,26 @@ Only the Analyst can modify `spec.md`. When user feedback implies a spec change 
 
 ## Step 2: Load Playbooks
 
-Playbooks are platform-specific knowledge bases stored as GitHub gists. The Orchestrator fetches them once per invocation and **injects the content directly into each agent's prompt** — no local caching, no file references.
+Playbooks are platform-specific knowledge bases stored as markdown files inside this skill at `skills/autocraft/playbooks/`. The Orchestrator reads them once per invocation and **injects the content directly into each agent's prompt** — no gist fetch, no network dependency.
 
 **Why direct injection:** Telling agents to "read file X" is unreliable — they may not read it, or read it but not internalize the rules. Injecting content into the prompt guarantees delivery.
 
-### Fetch protocol
+### Load protocol
 
-1. Resolve the registry gist ID: read `.autocraft` from repo root if it exists, otherwise use default `bca7073d567ca8b7ba79ff4bad5fb2c5`.
-2. Fetch the registry: `gh gist view <registry-id> -f playbooks.json`
-3. For each playbook gist, fetch ALL files: `gh gist view <gist-id> --files` then read each file.
+1. Locate the skill's `playbooks/` directory. When running via Claude Code skills, its absolute path is the skill directory (resolved by the harness) + `/playbooks/`. When a project wants to override with its own set, a `playbooks_path` key in the repo-root `.autocraft` file takes precedence and is read relative to repo root.
+2. Read the registry at `playbooks/registry.json`. Example:
+   ```json
+   {
+     "playbooks": [
+       {
+         "platform": "macos",
+         "path": "playbook-macos.md",
+         "description": "Xcode, SwiftUI, XCUITest, codesign, ScreenCaptureKit"
+       }
+     ]
+   }
+   ```
+3. For each entry, read the file at `playbooks/<path>`.
 4. Categorize content for injection by parsing `# ` (H1) headings within each file to split into sections:
 
 | H1 heading pattern | Category | Included in |
@@ -133,7 +144,7 @@ A "section" starts at a matching `# ` heading and ends at the next `# ` heading 
 
 **Critical:** When injecting into an agent's prompt, include ONLY that agent's role-specific section + general sections + templates (for Tester). Do NOT dump the entire playbook file — role sections for OTHER agents are noise that dilutes the rules the agent needs to follow.
 
-**Error handling:** If the registry or playbook fetch fails (network, auth), warn the user and proceed without playbooks. Do not abort the build loop.
+**Error handling:** If `playbooks/registry.json` is missing or a referenced playbook file can't be read, warn the user with the missing path and proceed without playbooks. Do not abort the build loop.
 
 ### AGENTS.md
 
@@ -443,5 +454,5 @@ The playbook may provide additional platform-specific templates (in `# Template:
 - **Stall detection:** If Builder or Tester produces no changes for 2 consecutive iterations, log and re-launch with Inspector's last failure list.
 - **Only the Analyst can modify the spec** (local `spec.md` or gist) — read-only for all other agents. The Analyst must confirm changes with the human before writing.
 - **`.autocraft/feedback-log.md` is append-only** — entries are never deleted, only marked resolved.
-- **Playbook gists are append-only.** New entries can be added; existing entries should not be deleted.
+- **Playbook files are append-only.** New `# {category}: {short-name}` sections can be added to `skills/autocraft/playbooks/<platform>.md`; existing sections should not be deleted.
 - Recurring tasks auto-expire after 7 days if run via `/loop`.

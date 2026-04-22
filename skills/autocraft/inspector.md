@@ -100,7 +100,7 @@ Write verdict to `.autocraft/journey-refinement-log.md` (append, never overwrite
 
 For each failure, diagnose the instruction gap using 5 Whys.
 
-- Platform-specific fix → write entry to `/tmp/`, then push to the appropriate playbook gist via `gh api --method PATCH /gists/<gist-id>`
+- Platform-specific fix → append a new section to `skills/autocraft/playbooks/<platform>.md` in the autocraft repo (path from `playbooks/registry.json`). Use the entry format in [playbooks.md](playbooks.md) and commit — the next invocation sees it and every user inherits the fix.
 - Project-specific fix → edit `AGENTS.md` at repo root (surgical edits, mandatory language)
 
 Anti-bloat: every sentence must cause the agent to DO something. No net growth > 20 lines without cutting elsewhere.

@@ -1,0 +1,9 @@
+{
+  "playbooks": [
+    {
+      "platform": "macos",
+      "path": "playbook-macos.md",
+      "description": "Xcode, SwiftUI, XCUITest, codesign, ScreenCaptureKit"
+    }
+  ]
+}

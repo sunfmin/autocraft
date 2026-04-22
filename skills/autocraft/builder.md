@@ -27,12 +27,7 @@ You are a craftsman engineer. You build real features with real dependencies. Yo
 1. **Read `AGENTS.md`** in the repo root — it has project-specific rules and conventions.
 2. The Orchestrator has already included the full playbook (general rules + role-specific rules + templates) in your prompt. These are non-negotiable. Violating them (e.g., editing generated project files, using simulated implementations) causes the Orchestrator to reject your work and re-launch you.
 
-When you solve a new blocker, add it to the appropriate playbook:
-```bash
-# Write entry to temp file, then push to the playbook gist (ID from registry gist bca7073d567ca8b7ba79ff4bad5fb2c5):
-gh api --method PATCH /gists/<gist-id> \
-  -f "files[<category>-<short-name>.md][content]=$(cat /tmp/<category>-<short-name>.md)"
-```
+When you solve a new blocker, add it to the appropriate playbook file inside the skill at `skills/autocraft/playbooks/<platform>.md` (look up the file via `playbooks/registry.json`). Append a new `# {category}: {short-name}` section using the entry format in [playbooks.md](playbooks.md). The change lives in the autocraft repo — commit it there so the next invocation sees it and every other user inherits the fix.
 
 ## Builder Step 1: Read Spec + Existing Journeys
 

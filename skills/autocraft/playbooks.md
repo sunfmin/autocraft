@@ -1,99 +1,74 @@
 # Playbook Management
 
-*Reference for creating, updating, and managing playbook gists. Loaded by the Orchestrator when playbook operations are needed.*
+*Reference for creating, updating, and managing playbooks. Playbooks live inside this skill at `skills/autocraft/playbooks/` — no network, no gist. Loaded by the Orchestrator at invocation time (see [orchestrator.md](orchestrator.md) Step 2).*
 
-## Registry
+## Layout
 
-Default registry gist: `bca7073d567ca8b7ba79ff4bad5fb2c5`
-
-**Local override:** If `.autocraft` exists at the repo root, read `registry_gist_id` from it:
-
-```json
-{
-  "registry_gist_id": "bca7073d567ca8b7ba79ff4bad5fb2c5"
-}
+```
+skills/autocraft/playbooks/
+  registry.json             # platform → file map
+  playbook-macos.md         # one file per platform (any kebab-case name)
+  playbook-web.md
+  ...
 ```
 
-Resolution order:
-1. `.autocraft` file in repo root → use `registry_gist_id`
-2. No `.autocraft` file → use default `bca7073d567ca8b7ba79ff4bad5fb2c5`
+Each platform playbook is a single markdown file containing multiple `# {Heading}` sections. The Orchestrator splits on H1s and routes each section to the relevant agent (see [orchestrator.md](orchestrator.md) for the routing rules).
 
-Registry format:
+## Registry format
+
+`playbooks/registry.json`:
+
 ```json
 {
   "playbooks": [
     {
       "platform": "macos",
-      "gist_id": "84a5c108d5742c850704a5088a3f4cbf",
+      "path": "playbook-macos.md",
       "description": "Xcode, SwiftUI, XCUITest, codesign, ScreenCaptureKit"
     }
   ]
 }
 ```
 
-## Commands
+- `platform` — lowercase, no spaces (`macos`, `web`, `ios`, `android`, `go`, `python`, …)
+- `path` — filename relative to `playbooks/` (not a gist ID)
+- `description` — one-line human summary
 
-```bash
-# Read the registry
-gh gist view <registry-id> -f playbooks.json
+## Project-level override
 
-# Update the registry (non-interactive)
-gh api --method PATCH /gists/<registry-id> \
-  -f "files[playbooks.json][content]=$(cat /tmp/playbooks.json)"
+A project can point autocraft at a different playbook set by writing `.autocraft` at its repo root:
 
-# List files in a playbook
-gh gist view <gist-id> --files
-
-# Read a specific entry
-gh gist view <gist-id> -f <filename>
-
-# Add or update an entry (write file locally, then push)
-gh api --method PATCH /gists/<gist-id> \
-  -f "files[<filename>.md][content]=$(cat /tmp/<filename>.md)"
-
-# Delete an entry
-gh api --method PATCH /gists/<gist-id> \
-  -f "files[<filename>.md]="
+```json
+{
+  "playbooks_path": "tools/my-playbooks/"
+}
 ```
 
-## Creating a New Playbook
+Resolution order:
+1. `.autocraft` → `playbooks_path` relative to repo root
+2. Fallback → the skill's own `skills/autocraft/playbooks/`
 
-1. **Gather content** — ask the user what entries to include, or accept content they provide
-2. **Write entry files** to `/tmp/` using kebab-case names: `{category}-{short-name}.md` (e.g., `networking-cors-preflight.md`, `testing-playwright-selectors.md`)
-3. **Create the gist**:
-   ```bash
-   gh gist create --public -d "Autocraft playbook: {platform}" /tmp/entry1.md /tmp/entry2.md ...
-   # Capture the gist ID from the output URL (last path segment)
+## Adding a new playbook
+
+1. Write a new file at `skills/autocraft/playbooks/playbook-{platform}.md` with H1 sections (see format below).
+2. Add an entry to `playbooks/registry.json`:
+   ```json
+   {
+     "platform": "web",
+     "path": "playbook-web.md",
+     "description": "Playwright, Vite, CORS"
+   }
    ```
-4. **Register the playbook** — fetch the registry, add the new entry, push back:
-   ```bash
-   gh gist view <registry-id> -f playbooks.json > /tmp/playbooks.json
-   # Add new entry to the playbooks array (use jq or manual edit)
-   gh api --method PATCH /gists/<registry-id> \
-     -f "files[playbooks.json][content]=$(cat /tmp/playbooks.json)"
-   ```
-   Platform keys: lowercase, no spaces (e.g., `macos`, `web`, `ios`, `android`, `go`, `python`)
-5. **Clean up** temp files in `/tmp/`
+3. `git commit` in the autocraft repo. Next invocation loads it; every user inherits it on pull.
 
-## Updating an Existing Playbook
+## Updating an existing entry
 
-1. **Resolve the gist ID** — look up the platform in the registry to get its `gist_id`
-2. **Fetch current content** (if updating):
-   ```bash
-   gh gist view <gist-id> -f <filename>.md > /tmp/<filename>.md
-   ```
-3. **Write or edit** the entry file in `/tmp/`
-4. **Push** — PATCH adds new files or overwrites existing ones:
-   ```bash
-   gh api --method PATCH /gists/<gist-id> \
-     -f "files[<filename>.md][content]=$(cat /tmp/<filename>.md)"
-   ```
-   Multiple files can be pushed in a single PATCH by adding more `-f` flags.
-5. **Clean up** temp files in `/tmp/`
+1. Edit `skills/autocraft/playbooks/playbook-<platform>.md` in place. Append new `# ` sections; don't delete existing ones (agents may still reference old rules).
+2. `git commit`. No network step.
 
-## Playbook Entry Format
+## Entry format (single section inside a playbook file)
 
-Each entry: 2-5 sentences per section minimum, Solution must include runnable code or exact commands.
+Each `# ` section is 2–5 sentences per sub-section minimum. Solution must include runnable code or exact commands.
 
 ```markdown
 # {Short title}
@@ -108,30 +83,15 @@ Each entry: 2-5 sentences per section minimum, Solution must include runnable co
 {Root cause — so agents can recognize variants of the same problem}
 ```
 
-## Selecting Playbooks for a Project
+Special section headings the Orchestrator recognizes (see [orchestrator.md](orchestrator.md) Step 2 for the routing table):
 
-The Orchestrator loads ALL registered playbooks at startup. If the project only uses one platform, only that playbook's entries are included in agent prompts.
+- `# Role: Builder*` — injected into Builder's prompt only
+- `# Role: Tester*` — injected into Tester's prompt only
+- `# Role: Inspector*` — Inspector only
+- `# Role: Orchestrator*` — Orchestrator only
+- `# Template:*` — Tester only
+- Everything else → general rules, injected into every agent's prompt
 
-**Error handling:** If the registry gist fetch fails (network, auth), warn the user and proceed without playbooks. Do not abort the build loop.
+## Error handling
 
-## Auto-Fork on Permission Failure
-
-Only the gist owner can update the registry. When `gh api PATCH` fails with 404 or 403, automatically fork and switch:
-
-```bash
-# 1. Fork the registry
-FORK_URL=$(gh gist fork <registry-id> 2>&1)
-FORK_ID=$(echo "$FORK_URL" | grep -oE '[a-f0-9]{20,}' | tail -1)
-
-# 2. Save fork ID to .autocraft
-echo "{\"registry_gist_id\": \"$FORK_ID\"}" > .autocraft
-
-# 3. Retry the update with the fork
-gh api --method PATCH /gists/$FORK_ID \
-  -f "files[playbooks.json][content]=$(cat /tmp/playbooks.json)"
-
-# 4. Commit .autocraft
-git add .autocraft && git commit -m "Use forked playbook registry: $FORK_ID"
-```
-
-This is transparent — future sessions read `.autocraft` and use the fork automatically.
+If `playbooks/registry.json` is missing or a referenced file can't be read, the Orchestrator warns with the missing path and proceeds without playbooks. The build loop does not abort — but agent output quality drops, so fix the path and re-run.

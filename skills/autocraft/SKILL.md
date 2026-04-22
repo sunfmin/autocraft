@@ -132,9 +132,9 @@ The Orchestrator detects the source type at startup and stores it in `.autocraft
 
 ## Playbooks
 
-Playbooks are shared, platform-specific knowledge bases stored as GitHub gists. The Orchestrator fetches them once per invocation and injects the content directly into each agent's prompt (see [orchestrator.md](orchestrator.md) Step 2).
+Playbooks are platform-specific knowledge bases that live inside this skill at `skills/autocraft/playbooks/`. The Orchestrator reads them once per invocation and injects the content directly into each agent's prompt (see [orchestrator.md](orchestrator.md) Step 2). No network, no gist — just files.
 
-Default registry gist: `bca7073d567ca8b7ba79ff4bad5fb2c5`. Override via `.autocraft` file at repo root. See [playbooks.md](playbooks.md) for full registry management, CRUD commands, entry format, and auto-fork behavior.
+Projects can override the path via a `.autocraft` file at repo root (`"playbooks_path": "tools/my-playbooks/"`). See [playbooks.md](playbooks.md) for the registry format, entry format, and how to add or update a platform.
 
 ---
 
@@ -151,7 +151,7 @@ The full 12-step orchestrator protocol — including agent launch directives, te
 | Test contract assertions too strict for current implementation stage | Write contracts that match what's testable now, tighten in later iterations |
 | Screenshots show permission dialogs (UI mode) | Run `/preflight-permissions` first to grant all TCC permissions |
 | Loop stalls with no progress for multiple iterations | Stall detection: if no changes for 2 iterations, re-launch with Inspector's last failure list |
-| Playbook gist update fails with 403/404 | Auto-fork triggers automatically — see [playbooks.md](playbooks.md) |
+| Playbook file missing or path resolves nowhere | Check `playbooks/registry.json` and `.autocraft` override path; the Orchestrator warns and runs without playbooks, but agent quality drops |
 
 ---
 

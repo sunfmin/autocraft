@@ -96,6 +96,6 @@ journeys/
 
 ## Requirements
 
-- **macOS apps:** Xcode + XcodeGen (`brew install xcodegen`), `gh` CLI for pitfalls gist access
+- **macOS apps:** Xcode + XcodeGen (`brew install xcodegen`). Platform playbooks ship inside the skill — no network or `gh` CLI needed.
 - **Web apps:** Node.js + Playwright (`npm i -D @playwright/test`)
 - A `spec.md` in the project root with requirements and acceptance criteria
