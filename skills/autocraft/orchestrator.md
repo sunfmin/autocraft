@@ -18,7 +18,7 @@
 > When the next step is obvious (clear gap, failing test, missing implementation), proceed immediately. Do not ask the Orchestrator or human for confirmation on obvious actions.
 >
 > **NAMED WAIT CONDITIONS, NOT SLEEPS:**
-> In Mode A test code (integration), use event-driven wait macros, not `sleep()`. In the rare UI-adjacent XCUITest case, `waitForExistence` is BANNED — use `waitAndSnap(element, timeout:, "FAIL message")`. In Mode B journey markdown, every wait step names the element or state being awaited ("wait until element `savedToast` exists, timeout 5s"), never a duration. Step 9 greps for `sleep N` in journey.md and `waitForExistence` in test code and auto-rejects any match.
+> In Mode A test code (integration), use event-driven wait primitives, not `sleep()`. In Mode B journey markdown, every wait step names the element or state being awaited ("wait until element `savedToast` exists, timeout 5s"), never a duration. Step 9 greps for `sleep N` in journey.md and auto-rejects any match.
 
 **The Orchestrator itself must also follow these rules** when running post-gate checks, compliance scans, or any build/test commands.
 
@@ -139,7 +139,7 @@ Playbooks are platform-specific knowledge bases stored as markdown files inside 
 
 A "section" starts at a matching `# ` heading and ends at the next `# ` heading (or EOF). Split the file content at H1 boundaries, then route each section to the correct agent based on the heading pattern.
 
-**Example:** A playbook file with headings `# XcodeGen Pitfalls`, `# Role: Tester (macOS)`, `# Template: JourneyTestCase` produces three sections: XcodeGen Pitfalls → general (all agents), Role: Tester → Tester only, Template → Tester only.
+**Example:** A playbook file with headings `# XcodeGen Pitfalls`, `# Role: Tester (macOS)`, `# Template: XCTest` produces three sections: XcodeGen Pitfalls → general (all agents), Role: Tester → Tester only, Template → Tester only.
 
 5. Hold categorized content in memory for injection into agent prompts (Steps 5, 8, 10).
 
@@ -197,7 +197,7 @@ Steps 5, 8, and 10 below list only the **additional items** specific to each age
 
 ## Step 5: Launch Builder Agent (background)
 
-**Integration mode — Builder skip:** If the project mode is `integration` AND no production code changes are needed (e.g., pure test refactoring), skip to Step 7. Record in `.autocraft/journey-loop-state.md`: `Builder: skipped (no production code changes needed)`.
+**Builder skip:** If no production code changes are needed (e.g., pure test refactoring), skip to Step 7. Record in `.autocraft/journey-loop-state.md`: `Builder: skipped (no production code changes needed)`.
 
 Launch Builder (background) with standard items plus:
 - Directive: which journey to build/extend, plus any simulation fixes from Step 4
@@ -216,11 +216,11 @@ After the Builder completes, verify it followed the rules. Run the platform-spec
 
 If ANY violation: **re-launch the Builder** with the specific violation.
 
-## Step 6: Generate UI Journey (UI mode only)
+## Step 6: Generate UI Journey (Mode B criteria)
 
-**Skip this step in `integration` mode** — proceed directly to Step 7.
+**Skip this step if no criterion in the current batch routes to Mode B.** Proceed directly to Step 7.
 
-**This is the critical structural step.** The Orchestrator — not the Tester — defines what the journey must prove. The Tester only sharpens and executes it.
+**This is the critical structural step** when Mode B criteria exist. The Orchestrator — not the Tester — defines what the journey must prove. The Tester only sharpens and executes it.
 
 UI acceptance criteria are verified by **Mode B**: a natural-language `journey.md` executed by a separate Claude instance with vision (via `driving-macos-with-wda-vision` for macOS, Playwright MCP for web). The Orchestrator drafts the journey skeleton; the Tester fills in concrete locators and executes.
 
@@ -284,22 +284,24 @@ Write to `.autocraft/journeys/{NNN}-{name}/journey.md`:
 
 ## Step 7: Generate Integration Test Contract & Refactor if Needed
 
-**In `integration` mode:** This step is ALWAYS executed — the integration test contract is the primary (and only) test contract. Analyze existing code and tests to generate scenario-based integration test contracts.
+Generate an integration test contract whenever:
 
-**In `ui` mode:** This step is conditional. After the Builder completes, the Orchestrator analyzes the new/modified code to decide if integration-level tests are needed in addition to the Step 6 journey. Not every journey needs them — Mode B journeys cover user-visible behavior; integration tests cover "does the plumbing actually work." A criterion routed as hybrid in Step 6 is automatically included here; additional integration tests are added for silent-failure risks the Builder's code introduces.
+- One or more criteria in the current batch routed to **Mode A** (observable-state verification), OR
+- A criterion routed to **Hybrid** (both Mode A and Mode B), OR
+- The Builder's new/modified code in a Mode-B-only batch introduces **silent failure risks** that the journey won't catch (see below).
 
-### When to generate integration tests
+If none of the above apply, skip this step.
 
-**In `integration` mode:** Always. Scan the existing code to identify all testable pipelines.
+### Silent failure risks (Mode-B-only batches)
 
-**In `ui` mode:** Scan the Builder's code for **silent failure risks** — things the Mode B journey won't catch because they're invisible to the user (but still wrong):
+Scan the Builder's code for risks that are invisible to the user but still wrong:
 
 - **External dependency** — C/FFI, vendored libs, model loading: links at build time but may crash/nil at runtime
 - **Data pipeline with file I/O** — output file exists but contains garbage (wrong format, corrupted)
 - **Multi-stage handoff** — A→B→C where the handoff silently drops data
 - **Format conversion** — resampling, encoding, serialization where content is wrong but file looks valid
 
-If none of these patterns are present (pure UI, layout, cosmetic), skip this step in `ui` mode.
+If none of these patterns are present (pure UI, layout, cosmetic), skip this step.
 
 ### Analysis process
 
@@ -372,14 +374,14 @@ Launch Tester (background) with standard items plus:
 - The UI journey draft (`.autocraft/journeys/{NNN}-{name}/journey.md`) if Step 6 ran
 - The integration test contract (`integration-test-contract.md`) if Step 7 ran
 - The Builder's report (accessibility identifiers, testability notes, integration boundaries)
-- Directive: if both artifacts exist, run integration tests first (faster, catches plumbing), then execute the journey on top of a known-good backend. In `integration` mode, only integration tests exist.
+- Directive: if both artifacts exist, run integration tests first (faster, catches plumbing), then execute the journey on top of a known-good backend. If only one artifact exists, run just that one.
 - If re-launch after rejection: the specific failure list with journey.md line numbers (Mode B) or test file:line references (Mode A)
 
 ### Artifacts
 
-**Mode B (UI journey).** The Tester spawns a separate Claude instance that runs the journey via `driving-macos-with-wda-vision` (macOS) or the Playwright MCP (web). The executor saves evidence to `.autocraft/journeys/{NNN}-{name}/screenshots/` and writes a PASS/FAIL report per criterion. No XCUITest framework, no xctrunner sandbox, no symlinks.
+**Mode B (UI journey).** The Tester spawns a separate Claude instance that runs the journey via `driving-macos-with-wda-vision` (macOS) or the Playwright MCP (web). The executor saves evidence to `.autocraft/journeys/{NNN}-{name}/screenshots/` and writes a PASS/FAIL report per criterion.
 
-**Mode A (integration).** The Tester runs the test suite via the platform's native runner. Output files go where the runner writes them. If UI-adjacent XCUITest integration tests are used (rare, only when the user explicitly wants them), the legacy [JourneyTester](https://github.com/sunfmin/JourneyTester) package writes to `.journeytester/journeys/<name>/artifacts/` — in that case, symlink `~/Library/Containers/.xctrunner/Data/.journeytester` to `<project-root>/.journeytester` so artifacts are accessible.
+**Mode A (integration).** The Tester runs the test suite via the platform's native runner. Output files go where the runner writes them.
 
 Wait for Tester to complete.
 
@@ -401,8 +403,7 @@ For each criterion in the integration contract:
 4. **FAIL_IF_BLOCKED present?** — for criteria with prerequisites, grep for the **exact** FAIL_IF_BLOCKED message from the contract **verbatim**. Paraphrased messages count as FAIL → FAIL
 5. **ASSERT_CONTAINS enforced?** — for every `behavioral` criterion, grep the test file for a content-matching assertion near the action. If the test only detects change without verifying expected content → FAIL
 6. **Single-flow state machine?** — integration contracts with Phase ordering require a **single test function** that follows the Phase sequence (Phase 1 → Phase 2 → ... → Phase N). Splitting phases into separate test functions breaks state. Exceptions: criteria that require process relaunch or contradictory preconditions MAY be in separate functions.
-7. **Base class used correctly?** — if the project has a journey test base class, verify the test subclasses it AND calls the parent setup method instead of duplicating setup logic → FAIL
-8. **Zero `waitForExistence`?** (for the rare UI-adjacent XCUITest case) — grep for ANY occurrence of `waitForExistence`. Every match is a FAIL. Replace with the platform's event-driven wait macro.
+7. **Base class used correctly?** — if the project has an integration test base class, verify the test subclasses it AND calls the parent setup method instead of duplicating setup logic → FAIL
 
 ### Step 9B: Mode B (journey.md present)
 
@@ -425,7 +426,7 @@ If ANY check fails (in whichever section applies): **re-launch the Tester immedi
 
 Launch Inspector (foreground) with standard items plus:
 - Directive: evaluate the most recent journey
-- **Project mode** (`ui` or `integration`) AND **artifacts present** (journey.md / integration-test-contract.md / both)
+- **Artifacts present** (journey.md / integration-test-contract.md / both) — Inspector runs only the scans matching the artifacts that exist
 - If `journey.md` exists: include `/frontend-design` output if installed (for Mode B screenshot-review design judgment)
 - If only `integration-test-contract.md` exists: directive to skip screenshot review, run Mode A Phase 1A scans + assertion honesty only
 
@@ -477,7 +478,7 @@ ALL of:
 
 Platform playbooks under `skills/autocraft/playbooks/` provide templates in `# Template:` sections. The Orchestrator includes these in the Tester's prompt (Step 8).
 
-**Mode A (integration tests).** Platform playbooks carry platform-specific test-code templates — e.g., macOS `# Template: JourneyTestCase` for UI-adjacent XCUITest work, web `# Template: Playwright Page Object` for browser tests. The legacy [JourneyTester](https://github.com/sunfmin/JourneyTester) SPM package is the macOS base class used when an XCUITest integration test is genuinely needed.
+**Mode A (integration tests).** Platform playbooks carry platform-specific test-code templates — e.g., web `# Template: Playwright Page Object` for browser tests, `# Template: XCTest` for pure-Swift integration tests.
 
 **Mode B (UI journeys).** No test-code template. The journey.md skeleton in Step 6 IS the template — Goal / Preconditions / Ordered steps / Acceptance criteria with PASS + EVIDENCE / Hazards. Platform specifics (mac2.sh vs Playwright MCP) live in the respective driver skill, not the playbook.
 

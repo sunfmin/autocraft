@@ -9,7 +9,7 @@ All rules in this file are non-negotiable. Violating them causes the Orchestrato
 1. [XcodeGen Pitfalls](#xcodegen-pitfalls)
 2. [Code Signing](#code-signing)
 3. [SwiftUI Pitfalls](#swiftui-pitfalls)
-4. [XCUITest Pitfalls](#xcuitest-pitfalls)
+4. [macOS UI Testing Approach](#macos-ui-testing-approach)
 5. [Never Simulate App Features](#never-simulate-app-features)
 6. [Inspector: ANSI Garbage](#inspector-ansi-garbage)
 7. [Architecture Guide](#architecture-guide)
@@ -148,48 +148,11 @@ Use `app.descendants(matching: .any)["myId"]` for element lookup.
 
 ---
 
-# XCUITest Pitfalls
+# macOS UI Testing Approach
 
-## BANNED: waitForExistence
+macOS UI acceptance criteria go through **Mode B journeys** — natural-language `journey.md` executed by a separate Claude instance with vision via the `driving-macos-with-wda-vision` skill (WebDriverAgentMac + Appium + `mac2.sh`). There is no XCUITest UI test target, no in-process test harness.
 
-`waitForExistence` is BANNED from test code. Zero occurrences — no exceptions. Use `waitAndSnap(element, timeout:, "FAIL message")` for ALL waits. The Orchestrator's Step 9 greps for `waitForExistence` and auto-rejects any match.
-
-## Wait for Async Children, Not Just the Container
-
-When content loads async, `waitAndSnap` on the container succeeds instantly but children aren't loaded. Use `waitAndSnap` on the first child element instead.
-
-## Use .exists for Already-Loaded Views
-
-Use `waitAndSnap()` ONLY once per view transition, then `.exists` (synchronous) for subsequent checks in the same view.
-
-## App Launches Without a Window (macOS)
-
-macOS SwiftUI apps may not open a window when launched by XCUITest. JourneyTestCase handles this in setUpWithError().
-
-## Disable App Sandbox for UI Test Target
-
-Add to `project.yml`: `ENABLE_APP_SANDBOX: "NO"`.
-
-## Don't Use if-Guards on Critical Test Steps
-
-```swift
-// FORBIDDEN — silently skips
-if recordingBanner.exists {
-    snap("096-recording-banner-active")
-}
-
-// REQUIRED — test FAILS with diagnostics
-waitAndSnap(recordingBanner, "FAIL('Recording banner must appear')")
-snap("096-recording-banner-active")
-```
-
-## Watchdog Timer (Automatic)
-
-JourneyTestCase includes a watchdog that auto-captures if >10s pass since last `snap()`. No configuration needed.
-
-## springboard Does Not Exist on macOS
-
-Use `app.alerts.firstMatch` / `app.sheets.firstMatch` instead.
+Only pure-Swift integration tests (service layer, repositories, value logic) run as XCTest — these do not launch or drive the UI.
 
 ---
 
@@ -281,11 +244,8 @@ Entities (Business Objects, Value Objects, Pure Swift)
 
 # Role: Builder (macOS)
 
-## JourneyTester Setup
-Add [JourneyTester](https://github.com/sunfmin/JourneyTester) as an SPM dependency for the UI test target. See the [JourneyTester README](https://raw.githubusercontent.com/sunfmin/JourneyTester/refs/heads/main/README.md) for project.yml config and setup steps.
-
 ## Dependency Integration
-- **SPM** — preferred for Swift libraries (including JourneyTester)
+- **SPM** — preferred for Swift libraries
 - **Carthage** — for frameworks without SPM
 - **Vendored** — for C libraries (whisper.cpp, etc.)
 
@@ -311,66 +271,47 @@ Use `os_log` with `%{public}@`, never `print()`.
 
 # Role: Tester (macOS)
 
-## Base Class Usage (JourneyTester)
+## UI Criteria → Mode B Journeys (No XCTest Code)
 
-Import `JourneyTester` and subclass `JourneyTestCase`. See the [JourneyTester README](https://raw.githubusercontent.com/sunfmin/JourneyTester/refs/heads/main/README.md) for full API (`snap()`, `step()`, `waitAndSnap()`, `assertExists()`, watchdog config).
+Mode B criteria are verified by running `journey.md` through the `driving-macos-with-wda-vision` skill (spawn a fresh Claude instance with `claude -p`). Do NOT write XCTest / XCUITest code for UI verification. The journey markdown IS the test.
 
-```swift
-import JourneyTester
-import XCTest
+## Integration Criteria → XCTest
 
-final class Journey009Tests: JourneyTestCase {
-    override var journeyName: String { "009-window-picker" }
-    override var appBundleID: String? { "com.example.myapp" }
-
-    func testWindowPicker() {
-        step("open picker") {
-            app.buttons["pickWindowButton"].click()
-            snap("picker-opened")
-        }
-        step("verify content") {
-            waitAndSnap(app.tables.firstMatch, timeout: 10, "Window list must appear")
-        }
-    }
-}
-```
-
-Artifacts are written to `.journeytester/journeys/{name}/artifacts/`. After tests, symlink the xctrunner sandbox to the project root: `ln -sfn ~/Library/Containers/.xctrunner/Data/.journeytester <project-root>/.journeytester`
+Mode A criteria for pure-Swift code (service layer, repositories, parsers, value logic) run as XCTest unit/integration tests that do not launch the UI. Subclass `XCTestCase` directly.
 
 ## Forbidden Guard Patterns (Swift)
 
 **FORBIDDEN** (silently skip):
 ```swift
-if element.exists { XCTAssertTrue(...) }
 guard let result = action() else { return }
 if let dir = findDirectory() { XCTAssertTrue(...) }
 ```
 
 **ALLOWED** (fail loudly):
 ```swift
-waitAndSnap(element, "FAIL('Element must appear')")
-guard let result = action() else { XCTFail("..."); return }
+guard let result = action() else { XCTFail("action() returned nil"); return }
 let dir = findDirectory()
-XCTAssertFalse(dir.isEmpty, "FAIL('Directory must exist')")
+XCTAssertFalse(dir.isEmpty, "findDirectory() must return a non-empty path")
 ```
 
-## Behavioral Assertion Pattern
+## Behavioral Assertion Pattern (Mode A, before/after)
 
 ```swift
-let outputBefore = (app.descendants(matching: .any)["terminalOutputArea"].value as? String) ?? ""
-summarizeBtn.click()
-waitAndSnap(app.descendants(matching: .any)["terminalOutputArea"].firstMatch, timeout: 3, "FAIL('Output area must exist')")
-let outputAfter = (app.descendants(matching: .any)["terminalOutputArea"].value as? String) ?? ""
-XCTAssertNotEqual(outputBefore, outputAfter, "AC2: must change")
-XCTAssertTrue(outputAfter.contains("\n") || outputAfter.count > outputBefore.count + 50, "AC2: must be substantial")
+let before = service.currentState()
+service.performAction(input)
+let after = service.currentState()
+XCTAssertNotEqual(before, after, "AC2: state must change after performAction")
+XCTAssertTrue(after.contains(expectedToken), "AC2: new state must contain expected token")
 ```
+
+A change check alone is insufficient (passes for errors too). A content check without a change check does not prove the action caused it. Both are required for `behavioral` assertions.
 
 ## Real Test Content
 
 | Feature | How |
 |---------|-----|
-| Audio recording | `say "test content" &` before recording |
-| Transcription | `say` known text → record → assert contains |
+| Audio processing | `say "test content"` to generate real audio files |
+| Transcription | `say` known text → feed to service → assert contains |
 
 ## Bypass Flag Ban
 
@@ -378,7 +319,7 @@ BANNED: `-generateTestTranscript`, `-useTestDownloads`, `-useFakeData`. Only sta
 
 ## Adding New Test Files
 
-When adding a new `.swift` file to a test target, run `xcodegen generate` to regenerate the `.xcodeproj`. The `sources: [PercevTests]` directive in `project.yml` auto-discovers all `.swift` files in that directory, but only after regeneration.
+When adding a new `.swift` file to a test target, run `xcodegen generate` to regenerate the `.xcodeproj`. The `sources:` directive in `project.yml` auto-discovers all `.swift` files in that directory, but only after regeneration.
 
 ---
 
@@ -400,19 +341,19 @@ ANY result = **FAIL**.
 ## Scan 2 — Bypass Flags
 
 ```bash
-grep -rn "generateTestTranscript\|useTestDownloads\|useFakeData" *UITests/ --include="*.swift"
+grep -rn "generateTestTranscript\|useTestDownloads\|useFakeData" . --include="*.swift"
 ```
 
 ## Scan 3 — Stub Functions
 
 ```bash
-grep -rn 'return ""$\|return \[\]$' */ --include="*.swift" | grep -v "UITests\|Tests\|guard\|else\|catch\|//"
+grep -rn 'return ""$\|return \[\]$' . --include="*.swift" | grep -v "Tests\|guard\|else\|catch\|//"
 ```
 
 ## Scan 4 — Vacuous Assertions
 
 ```bash
-grep -rn "XCTAssertTrue.*||" *UITests/ --include="*.swift"
+grep -rn "XCTAssertTrue.*||" . --include="*.swift" | grep "Tests"
 ```
 
 ## Platform-Specific Visual Defects
@@ -427,35 +368,22 @@ Watch for ANSI escape codes, SwiftUI rendering artifacts, macOS permission dialo
 
 ```bash
 echo "=== Bypass flags in tests ==="
-grep -rn "generateTestTranscript\|useTestDownloads\|useFakeData" *UITests/ --include="*.swift" || echo "CLEAN"
+grep -rn "generateTestTranscript\|useTestDownloads\|useFakeData" . --include="*.swift" || echo "CLEAN"
 
 echo "=== Stub functions in production ==="
-grep -rn 'return ""$\|return \[\]$' */  --include="*.swift" | grep -v "UITests\|Tests\|test\|guard\|else\|catch" || echo "CLEAN"
+grep -rn 'return ""$\|return \[\]$' . --include="*.swift" | grep -v "Tests\|test\|guard\|else\|catch" || echo "CLEAN"
 
 echo "=== Test data generators in production ==="
-grep -rn "testSentences\|generateTest\|hardcodedSegments" */ --include="*.swift" | grep -v "UITests\|Tests" || echo "CLEAN"
+grep -rn "testSentences\|generateTest\|hardcodedSegments" . --include="*.swift" | grep -v "Tests" || echo "CLEAN"
 ```
 
-## Post-Test Artifact Access
-
-After `xcodebuild test` completes, symlink the xctrunner sandbox to the project root so artifacts are accessible:
+## Contract Compliance Validation (Mode A XCTest files)
 
 ```bash
-ln -sfn ~/Library/Containers/.xctrunner/Data/.journeytester <project-root>/.journeytester
-```
-
-Artifacts are then at `.journeytester/journeys/{name}/artifacts/` — PNGs for screenshots, `.txt` for accessibility trees.
-
-## Contract Compliance Validation
-
-```bash
-TEST_FILE="<AppName>UITests/<JourneyTestFile>.swift"
+TEST_FILE="<path/to/IntegrationTestFile>.swift"
 
 echo "=== Silent Skips ==="
-grep -n 'if.*\.exists.*{' "$TEST_FILE" | grep -v "// optional\|cleanup\|Cleanup\|delete\|Delete" || echo "CLEAN"
-
-echo "=== waitForExistence (BANNED — zero occurrences allowed) ==="
-grep -n 'waitForExistence' "$TEST_FILE" || echo "CLEAN"
+grep -n 'if let.*= .*{' "$TEST_FILE" | grep -v "// optional\|cleanup\|Cleanup\|delete\|Delete" || echo "CLEAN"
 
 echo "=== Tautological Assertions ==="
 grep -n 'XCTAssert.*||' "$TEST_FILE" || echo "CLEAN"
@@ -466,23 +394,10 @@ grep -n 'architectur' "$TEST_FILE" || echo "CLEAN"
 
 ## Test Contract: Platform Mappings
 
-| Generic concept | macOS/XCUITest equivalent |
+| Generic concept | Swift / XCTest equivalent |
 |----------------|--------------------------|
 | `FAIL(message)` | `XCTFail(message)` |
 | Content assertion | `XCTAssertTrue(value.contains(...))` |
 | Change detection | `XCTAssertNotEqual(before, after)` |
 | Test file extension | `.swift` |
-| Test directory pattern | `*UITests/` |
-
----
-
-# Template: JourneyTestCase
-
-`JourneyTestCase` is provided by the [JourneyTester](https://github.com/sunfmin/JourneyTester) SPM package. Add it as a dependency — do NOT copy the class manually.
-
-See the [JourneyTester README](https://raw.githubusercontent.com/sunfmin/JourneyTester/refs/heads/main/README.md) for:
-- SPM setup and `project.yml` configuration
-- Full API reference (`snap()`, `step()`, `waitAndSnap()`, `assertExists()`, `axQuery()`)
-- Override points (`journeyName`, `appBundleID`, `axTreeDepth`, `watchdogTimeout`)
-- Artifact output format (screenshots + compact accessibility trees)
-- Self-signed certificate and Accessibility permission setup
+| Test directory pattern | `*Tests/` |

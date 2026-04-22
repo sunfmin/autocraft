@@ -50,32 +50,19 @@ The **Orchestrator** routes each acceptance criterion by mode ("verify needs eye
 - **Quick prototyping** where stubs are acceptable
 - **No spec yet** — start with the Analyst step or write spec.md first
 
-## Project Mode
+## Criterion Mode
 
-Two concepts — don't confuse them:
+Every acceptance criterion is routed by the Orchestrator (see Step 6 "Mode routing rule"):
 
-**Project mode** (detected once at startup, recorded in `.autocraft/journey-loop-state.md`):
-| Project Mode | When | What it means |
-|------|------|-------|
-| `ui` | Project has a UI framework AND spec describes user-visible behavior | Orchestrator runs both Step 6 (journey drafting) and Step 7 (integration contracts as needed) |
-| `integration` | No UI, or spec describes data pipelines, APIs, test refactoring, or library behavior | Orchestrator skips Step 6; Step 7 generates the only test artifact |
-
-**Criterion mode** (decided per acceptance criterion inside a `ui` project — see Orchestrator Step 6 "Mode routing rule"):
-- **Mode B (journey.md)** — verification requires eyes on screen: layout, toasts, modals, visual regressions, crash-free interactions
-- **Mode A (integration-test-contract.md)** — verification is about observable state: API payloads, file contents, DB rows, exit codes
+- **Mode A (`integration-test-contract.md`)** — verification is about observable state: API payloads, file contents, DB rows, exit codes
+- **Mode B (`journey.md`)** — verification requires eyes on screen: layout, toasts, modals, visual regressions, crash-free interactions
 - **Hybrid** — both matter; both artifacts generated, both must pass
 
-**Detection rules for project mode (in order):**
-1. If `spec.md` contains `mode: integration` or `mode: ui` in frontmatter → use that
-2. If the task is test refactoring → `integration`
-3. If the project has no UI framework and no UI test target → `integration`
-4. Otherwise → `ui`
-
-**What changes in `integration` project mode:**
-- Builder: **skipped** if no production code changes needed
-- Step 6 (journey drafting): **skipped**
-- Step 7 (integration test contract): **always generated** — primary and only artifact
-- Inspector: runs Mode A scans only (Phase 1A); skips Mode B screenshot-evidence review
+Behavior follows from the routed criteria, not from a project-level flag:
+- If no criterion routes to Mode B, no `journey.md` is drafted (Step 6 produces nothing).
+- If no criterion routes to Mode A, no `integration-test-contract.md` is drafted (Step 7 produces nothing).
+- If the task has no production code changes (e.g., pure test refactoring), the Builder is skipped.
+- The Inspector runs only the scans relevant to the artifacts that exist.
 
 ---
 
@@ -127,7 +114,6 @@ The Orchestrator detects the source type at startup and stores it in `.autocraft
 | `.autocraft/journeys/*/journey.md` | **Orchestrator** (drafts skeleton), **Tester** (sharpens locators/waits/Pass clauses) | Journey executor (Claude instance), Inspector |
 | `.autocraft/journeys/*/integration-test-contract.md` | **Orchestrator** | **Tester** (implements as code), Inspector (validates) |
 | `.autocraft/journeys/*/screenshots/` | Mode B journey executor | Inspector (Phase 1B evidence check + Phase 2c sanity review) |
-| `.journeytester/journeys/{name}/artifacts/` | Mode A UI-adjacent XCUITest (rare — only when explicitly used) | Inspector |
 | `.autocraft/journey-state.md` | Tester (`needs-review`), Inspector (`polished`/`needs-extension`) | All |
 | `.autocraft/journey-refinement-log.md` | Inspector | Orchestrator |
 | `.autocraft/journey-loop-state.md` | Orchestrator | Orchestrator (resume) |
