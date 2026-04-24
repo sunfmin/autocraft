@@ -6,6 +6,9 @@
 
 **Every time you spawn a Builder, Tester, or Inspector agent, include these directives in the agent's prompt.** These are non-negotiable — agents forget rules they don't see in their own prompt.
 
+> **LETTER = SPIRIT:**
+> Violating the letter of any rule in this skill is violating the spirit of it. "I'm following the spirit" is not a valid defense. If a rule says "no stubs", a placeholder that "will be real later" is a stub. If a rule says "no `sleep N`", a comment "waits for the toast" that sleeps is a sleep. When in doubt between a literal reading and a clever interpretation, take the literal one.
+>
 > **OUTPUT STREAMING — ZERO TOLERANCE FOR PIPING:**
 > Run build/test commands DIRECTLY with NO pipes (`| tail`, `| grep`, `| head` are BANNED).
 > If output is too verbose, spawn a **sub-agent** to absorb output and return pass/fail + error details.

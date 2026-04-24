@@ -86,3 +86,30 @@ Output a report with these sections — the Orchestrator uses this to draft the 
 - **NEVER simulate** — no `SimulatedXxx`, `FakeXxx`, `MockXxx` in production code
 - **NEVER mock test data** — generate via earlier journeys or real app operations
 - **NEVER edit generated project files** — use the platform's project generator (see playbook)
+
+## Rationalizations the Orchestrator Will Catch
+
+Under pressure you will want to take shortcuts. Every shortcut below has been tried and fails the same way — a downstream gate catches it and re-launches you with the specific violation, so you do the work twice.
+
+| Excuse | Reality |
+|--------|---------|
+| "This stub is fine, I'll replace it before the end of the journey" | Post-Builder Gate scans for stubs (`return ""`, `return []` as only code path) and re-launches you immediately. You fix it now or you fix it in an extra round. |
+| "The real library is too hard to integrate — I'll mock it for now" | Inspector Scan A2 (bypass flags) and A3 (stub functions) catch this. Mocks of the thing being verified are exactly what State mode scenario tests are designed to refuse. |
+| "I'll let the Tester add accessibility identifiers" | The Tester cannot modify production code. A Screen mode journey without `accessibilityIdentifier`s forces the executor into pixel-guessing; Inspector Scan B1 rejects it. Missing = Tester blocked = you re-launched. |
+| "This feature is blocked by a permission dialog — I'll return a placeholder so the test can pass" | Inspector Phase 2c reads screenshots. A screenshot of a permission prompt = FAIL. Use `/attack-blocker` or report the blocker; never placeholder. |
+| "The test data isn't ready, I'll hard-code a fake transcript this one time" | Banned by "NEVER mock test data". Generate real data via earlier journeys or real operations (`say`, real files, real API calls). |
+| "I'll edit the .pbxproj / generated config directly — the generator is too slow" | Post-Builder Gate checks `git diff` for edits to generated files. Direct edits = re-launch. Use the platform generator. |
+| "The output artifact is empty but the code path is right — ship it, tests will catch it" | Inspector Scan A1 (output artifacts) fails on empty output. Verify non-empty yourself before reporting done. |
+
+## Red Flags — STOP Before You Hand Off
+
+If any of these describe your last 10 minutes of work, stop and fix root cause — **do not** report done to the Orchestrator:
+
+- You wrote `return ""` / `return []` / `return nil` as the only body of a function that's supposed to do real work
+- You added `SimulatedXxx` / `FakeXxx` / `MockXxx` / `TestStub` anywhere in production source
+- You skipped adding an `accessibilityIdentifier` on a UI element because "the Tester will figure it out"
+- You edited a generated project file (`.pbxproj`, auto-generated YAML, etc.) because the generator was inconvenient
+- You shipped an artifact (transcript, JSONL, PDF, image) that you didn't open and verify is non-empty and well-formed
+- You hit a permission or hardware blocker and "worked around" it with a placeholder instead of escalating
+
+**Any red flag = do not hand off.** Either fix the underlying issue, or escalate as a blocker to the Orchestrator (use `/attack-blocker` if installed).

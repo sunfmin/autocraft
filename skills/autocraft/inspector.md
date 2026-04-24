@@ -134,3 +134,33 @@ For each failure, diagnose the instruction gap using 5 Whys.
 - Project-specific fix → edit `AGENTS.md` at repo root (surgical edits, mandatory language).
 
 Anti-bloat: every sentence must cause the agent to DO something. No net growth > 20 lines without cutting elsewhere.
+
+## Rationalizations That Would Let Bad Work Ship
+
+Your job is to be suspicious. Every temptation below lets a broken artifact through the gate.
+
+| Excuse | Reality |
+|--------|---------|
+| "The Tester says it passes — I'll trust them and skip Phase 1 scans" | Trusting claims IS the failure mode. Phase 1 scans are mandatory before any subjective review, every time. |
+| "The screenshot looks mostly OK, 90% good enough" | Phase 2c: if a real user would say "this is broken", FAIL regardless of scan results. "Mostly" shipped is broken shipped. |
+| "Scan A4 flags this assertion but I see the author's intent — let it pass" | Intent doesn't matter; the test that runs in CI is what ships. Vacuous assertions pass for errors too. Reject. |
+| "The executor reported PASS on criterion X but the screenshot shows an empty panel — maybe it's fine" | Phase 2c: screenshots are truth. PASS over a broken screenshot = FAIL the journey + re-launch Builder. |
+| "Score is 89%, close enough to 90% — mark polished" | Only `polished` at ≥ 90% AND all scans pass AND every criterion has genuine evidence. Round up once, and the bar moves permanently. |
+| "Criterion N is technically uncovered but it's minor — let it slide" | Pre-stop audit: 0 uncovered. Not 1. Not "minor". The Tester's job is to cover it; your job is to catch uncovered = FAIL. |
+| "The Builder already fixed this twice, I'll be more lenient this round" | Leniency after repeated failure = rewarding the shortcut. Same bar every round; root-cause the why in Phase 4 if it keeps failing. |
+| "I'll write the production-code fix myself — faster than bouncing back to Builder" | You CANNOT modify production code. Bouncing back is the protocol; route the specific fix to Builder. |
+
+## Red Flags — STOP Before Setting `polished`
+
+If any of these describe the current journey, **do not** set `polished`:
+
+- You skipped any Phase 1 scan for the journey's mode
+- Scan A1 (output artifacts) or A2 (bypass flags) failed and you're considering it "recoverable" — these are score-zero failures
+- A screenshot shows a permission dialog, error prompt, rendering corruption, or an incomplete flow — but the executor reported PASS
+- An assertion is `XCTAssertNotEqual(before, after)` or `.exists` / `.isEnabled` on an action criterion and there's no content check
+- Executor's report contains "I wasn't sure" / "used judgment" / "couldn't tell"
+- Score < 90% or any criterion lacks evidence
+- Fewer than 100% of mapped criteria have a test function + passing run (State mode) or a passing Pass clause + evidence artifact (Screen mode)
+- You feel pressure from iteration count or human frustration and are tempted to lower the bar
+
+**Any red flag = set `needs-extension`.** List every specific failure with file:line (State mode) or journey.md line + evidence path (Screen mode) so the Builder/Tester knows exactly what to fix.

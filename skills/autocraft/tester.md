@@ -212,3 +212,44 @@ Set status to **`needs-review`**. NEVER set `polished`.
 - Hazards section covers known edges (setup overlays, focus loss, async rendering)
 - Executor runs in a separate Claude instance — don't mix authoring and execution in the same context
 - If the executor reports ambiguity, the journey is wrong — sharpen, don't override
+
+## Rationalizations the Inspector Will Catch
+
+The contract or journey is the source of truth. Every temptation below trades a few minutes of real work for a re-launch with a sharper failure list.
+
+| Excuse | Reality |
+|--------|---------|
+| "This criterion is hard to verify behaviorally — `.exists` is close enough" | Scan A5 ("Show Me" test) and Phase 2e (assertion honesty) both catch existence-only asserts on action criteria. You will be re-launched with that criterion's ASSERT_TYPE unchanged. |
+| "The contract says `behavioral` but the feature only really has observable existence — downgrade it" | The Tester cannot redefine a criterion. If `behavioral` is wrong, report it — don't silently weaken. |
+| "Wrap the assertion in `if let`, skip if the precondition isn't met" | Scan A6 (silent skip guards) rejects this. Use `guard let ... else { XCTFail("..."); return }` or assert then use. |
+| "Add `sleep 3` — the toast is async, it works on my machine" | Step 9B auto-rejects any `sleep N` in journey.md. Name the element you're waiting for with an explicit timeout. |
+| "Write the Pass clause as 'looks right' — the executor can judge" | Scan B3 bans that phrase outright. Name the element + exact text + evidence artifact. |
+| "Executor reported 'wasn't sure' — tell it to just pick pass, feature works" | Scan B7 rejects. Executor ambiguity = your journey is under-specified. Sharpen Step 2B, re-execute. |
+| "Run the whole test suite to be safe" | Launch directive bans it. Run only the journey's tests; full suite noise masks regressions. |
+| "Spec coverage is 90%, ship it — last 10% is edge cases" | Pre-Stop audit requires 0 uncovered criteria, not 90%. The last 10% is where the real bugs are. |
+| "Mock the external service — the real one is slow/flaky" | State mode forbids mocks of the thing being tested. Use real dependencies; if truly unreliable, split into its own scenario with real fixtures. |
+
+## Red Flags — STOP Before You Report `needs-review`
+
+Stop and re-check if any of these apply:
+
+**State mode:**
+- You used `.exists` / `.count > 0` / `NotEqual(before, after)` as the only assertion for a `behavioral` criterion
+- You wrote `if let x = result { XCTAssert(...) }` instead of `guard let x = result else { XCTFail(...); return }`
+- You split the contract's phases into separate `test_*` functions (breaks state between phases)
+- You duplicated setup logic instead of calling the project's integration test base class
+- You have a FAIL_IF_BLOCKED message that's paraphrased, not verbatim from the contract
+
+**Screen mode:**
+- A step has no locator (says "the button", "the usual menu")
+- A step has `sleep N` / "wait a moment" / "after a bit"
+- A Pass clause says "looks right" / "works correctly" / "as expected" (without a concrete predicate after it)
+- A criterion has no EVIDENCE: line naming the screenshot or xml fragment
+- Hazards section is empty
+- Executor reported "ambiguous" and you're considering overriding instead of sharpening
+
+**Either mode:**
+- You ran the full test suite instead of the change-related subset
+- You're about to set status to `polished` (only Inspector does that — set `needs-review`)
+
+**Any red flag = do not report `needs-review`.** Fix the artifact or escalate to the Orchestrator.
