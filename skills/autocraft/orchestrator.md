@@ -333,10 +333,36 @@ Write to `.autocraft/journeys/{NNN}-{name}/integration-test-contract.md`:
 - Silent failure risk: {what could break without UI tests catching it}
 - Files involved: {list of source files}
 
-## Integrated Scenario Tests
+## Acceptance Criteria
+<!-- Per-criterion metadata. The Tester implements these; the Step 9A validator
+     greps for each field. Field names (ACTION, ASSERT_TYPE, ASSERT_CONTAINS,
+     FAIL_IF_BLOCKED) are LOAD-BEARING — do not rename. -->
 
-### SCENARIO{N}: {full pipeline being verified}
+### AC{N}: {criterion text from spec, verbatim}
+- ACTION: {what the test must perform — exact function call, event, or interaction}
+- ASSERT_TYPE: {behavioral | state | existence}
+  <!-- behavioral: before/after state change + content match (most common)
+       state:      property equals expected value (e.g., isEnabled == true)
+       existence:  element is present (only for "visible" criteria) -->
+- ASSERT_CONTAINS: {required when ASSERT_TYPE is behavioral — the exact substring,
+  key, or property value the result must contain. Omit for state/existence.}
+- FAIL_IF_BLOCKED: "FAIL: cannot verify AC{N} — {prerequisite} not met because {concrete symptom}"
+  <!-- Omit only if the criterion has no prerequisite. If present, the Tester
+       must emit this string VERBATIM when blocked. -->
+- EVIDENCE: {file path, log excerpt, or returned value the test must produce
+  so the Inspector can open it and verify}
+- COVERED_BY: SCENARIO{M}  <!-- which scenario below exercises this AC -->
+
+### AC{N+1}: ...
+
+## Integrated Scenario Tests
+<!-- One scenario per pipeline. A scenario may cover multiple ACs — list them in COVERS.
+     Scenario STEPS are the implementation plan; per-AC assertion semantics come from the
+     ACCEPTANCE CRITERIA section above. -->
+
+### SCENARIO{M}: {full pipeline being verified}
 - PIPELINE: {A → B → C → D — describe the full data flow}
+- COVERS: AC{N}, AC{N+1}
 - STEPS:
   1. SETUP: {create real test data — temp dirs, generate audio via `say`, etc.}
      ASSERT: {setup produced valid data}
@@ -347,7 +373,7 @@ Write to `.autocraft/journeys/{NNN}-{name}/integration-test-contract.md`:
   3. ACTION: {Component B receives A's output}
      ASSERT: {B produced expected output}
      FAIL: "Step 3: {specific failure}"
-  4. VERIFY: {end-to-end output matches expectations}
+  4. VERIFY: {end-to-end output matches expectations — satisfies ASSERT_CONTAINS of covered ACs}
      ASSERT: {final result is correct — parse, validate content}
      FAIL: "Step 4: {specific failure}"
 
@@ -358,15 +384,16 @@ Write to `.autocraft/journeys/{NNN}-{name}/integration-test-contract.md`:
 ```
 
 **Rules:**
-1. **Integrated scenario tests, not unit tests.** One test per pipeline that exercises the full chain A → B → C → D. A single scenario test replaces 4 isolated unit tests.
-2. **Step-by-step assertions with unique failure messages.** Each step asserts before the next step begins. Fail messages say exactly which step and what went wrong. The AI reads the failure and knows immediately where to look.
-3. **Fail fast.** If Step 2 fails, Steps 3-4 don't run. Use `guard` + assertion.
-4. Use real dependencies (real files, real libraries) — mocks hide the exact bugs these tests are meant to catch
-5. Tests must be runnable without launching the app — use the platform's test-visibility mechanism to access internals (see playbook) and instantiate components directly
-6. Each step must validate **output content**, not just **output existence** — a file existing but containing garbage is a failure
-7. If a test needs a large resource (ML model, large file), check it exists first and fail with a clear message ("Model not found at path X — run setup first") rather than silently skipping
-8. **Remove redundant small tests.** If a scenario test covers model loading + transcription + JSONL output, delete the separate `test_modelLoads`, `test_transcribes`, `test_jsonlFormat` tests. Only keep small tests for edge cases NOT exercised by any scenario.
-9. **Run only the tests relevant to the current journey.** Do not run the full test suite.
+1. **Two-section structure is mandatory.** The `## Acceptance Criteria` section defines WHAT must be proven (per-AC metadata with load-bearing field names); the `## Integrated Scenario Tests` section defines HOW (pipelines that cover one or more ACs). Every AC must have `COVERED_BY: SCENARIO{M}` pointing at a scenario. Step 9A greps the AC section for `ASSERT_TYPE`, `ASSERT_CONTAINS`, `FAIL_IF_BLOCKED` — these field names must appear verbatim.
+2. **Integrated scenario tests, not unit tests.** One test per pipeline that exercises the full chain A → B → C → D. A single scenario test replaces 4 isolated unit tests.
+3. **Step-by-step assertions with unique failure messages.** Each step asserts before the next step begins. Fail messages say exactly which step and what went wrong. The AI reads the failure and knows immediately where to look.
+4. **Fail fast.** If Step 2 fails, Steps 3-4 don't run. Use `guard` + assertion.
+5. Use real dependencies (real files, real libraries) — mocks hide the exact bugs these tests are meant to catch
+6. Tests must be runnable without launching the app — use the platform's test-visibility mechanism to access internals (see playbook) and instantiate components directly
+7. Each step must validate **output content**, not just **output existence** — a file existing but containing garbage is a failure
+8. If a test needs a large resource (ML model, large file), check it exists first and fail with a clear message ("Model not found at path X — run setup first") rather than silently skipping
+9. **Remove redundant small tests.** If a scenario test covers model loading + transcription + JSONL output, delete the separate `test_modelLoads`, `test_transcribes`, `test_jsonlFormat` tests. Only keep small tests for edge cases NOT exercised by any scenario.
+10. **Run only the tests relevant to the current journey.** Do not run the full test suite.
 
 ## Step 8: Launch Tester Agent (background)
 
