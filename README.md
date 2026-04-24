@@ -94,7 +94,7 @@ After running, your project will contain:
 ```
 spec.md                                  # Your product spec (read-only)
 AGENTS.md                                # Project-specific overrides written by Inspector
-.autocraft/
+autocraft/
   journey-state.md                       # Status of each journey
   journey-loop-state.md                  # Orchestrator history + criteria master list
   journey-refinement-log.md              # Inspector scoring history
@@ -108,6 +108,21 @@ AGENTS.md                                # Project-specific overrides written by
       screenshots/                       # Evidence screenshots from the journey executor
     002-.../
 ```
+
+**Multiple specs in one repo.** `autocraft/` is resolved relative to the spec file's parent directory, not the repo root. If you want to work on several independent specs side by side, put each under its own subdir:
+
+```
+specs/
+  feature-a/
+    spec.md
+    autocraft/                           # this spec's journeys, state, evidence
+  feature-b/
+    spec.md
+    autocraft/
+AGENTS.md                                # stays at repo root, shared across specs
+```
+
+Run `/autocraft specs/feature-a/spec.md` and the state lands under `specs/feature-a/autocraft/`, isolated from `feature-b`. To freeze an old spec, just `mv` it into a subdir; nothing else moves.
 
 ## Requirements
 

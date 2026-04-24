@@ -24,7 +24,7 @@
 
 ## Analyst Integration (MANDATORY)
 
-Every invocation where `$ARGUMENTS` contains natural language (not a file path or "continue") MUST launch the Analyst FIRST. The Analyst logs feedback to `.autocraft/feedback-log.md` and optionally updates `spec.md`. The Orchestrator MUST NOT skip the Analyst when the user provides feedback. During the loop, check `.autocraft/feedback-log.md` at every handoff point for new entries. Route feedback items to the appropriate agent as part of their next launch directive.
+Every invocation where `$ARGUMENTS` contains natural language (not a file path or "continue") MUST launch the Analyst FIRST. The Analyst logs feedback to `autocraft/feedback-log.md` and optionally updates `spec.md`. The Orchestrator MUST NOT skip the Analyst when the user provides feedback. During the loop, check `autocraft/feedback-log.md` at every handoff point for new entries. Route feedback items to the appropriate agent as part of their next launch directive.
 
 ```dot
 digraph orchestrator_loop {
@@ -87,22 +87,35 @@ digraph orchestrator_loop {
 | `$ARGUMENTS` pattern | Intent | Action |
 |---------------------|--------|--------|
 | Empty, `continue`, or a file/gist path | Resume build loop | Skip Analyst if spec exists |
-| Natural language describing problems, bugs, or desired changes | **Feedback** | **Launch Analyst** to classify, log to `.autocraft/feedback-log.md`, and optionally update `spec.md` |
-| Natural language describing new features or requirements | **New requirement** | **Launch Analyst** to update `spec.md` and log to `.autocraft/feedback-log.md` |
+| Natural language describing problems, bugs, or desired changes | **Feedback** | **Launch Analyst** to classify, log to `autocraft/feedback-log.md`, and optionally update `spec.md` |
+| Natural language describing new features or requirements | **New requirement** | **Launch Analyst** to update `spec.md` and log to `autocraft/feedback-log.md` |
 
 **Detection heuristic:** If `$ARGUMENTS` is NOT one of [`continue`, a file path, a gist URL, a bare gist ID, or empty], treat it as human feedback and launch the Analyst.
 
 ### When Analyst is needed:
 1. Launch the **Analyst** (foreground) with [analyst.md](analyst.md) contents and the human's message
-2. The Analyst classifies the feedback, writes to `.autocraft/feedback-log.md`, and optionally updates `spec.md`
-3. After the Analyst completes, the Orchestrator reads `.autocraft/feedback-log.md` for routed items and proceeds to Step 2
+2. The Analyst classifies the feedback, writes to `autocraft/feedback-log.md`, and optionally updates `spec.md`
+3. After the Analyst completes, the Orchestrator reads `autocraft/feedback-log.md` for routed items and proceeds to Step 2
 
 ### When Analyst is NOT needed:
 - `$ARGUMENTS` is `continue` or a spec path AND `spec.md` exists → skip directly to Step 2
-- But STILL check `.autocraft/feedback-log.md` for unresolved items at every handoff point
+- But STILL check `autocraft/feedback-log.md` for unresolved items at every handoff point
 
 ### Spec updates
-Only the Analyst can modify `spec.md`. When user feedback implies a spec change (new requirement, changed behavior, removed feature), the Analyst updates the spec AND logs to `.autocraft/feedback-log.md`. The Orchestrator re-reads the spec in Step 3 to pick up changes.
+Only the Analyst can modify `spec.md`. When user feedback implies a spec change (new requirement, changed behavior, removed feature), the Analyst updates the spec AND logs to `autocraft/feedback-log.md`. The Orchestrator re-reads the spec in Step 3 to pick up changes.
+
+### Resolve the workspace path
+
+Once the spec source is known, compute `SPEC_DIR` and use it for every `autocraft/...` path in the rest of this protocol:
+
+- **Local file** — `SPEC_DIR = dirname($ARGUMENTS)` (or `.` if no `/` in the path). Example: `specs/feature-a/spec.md` → `SPEC_DIR = specs/feature-a`; the workspace is `specs/feature-a/autocraft/`. `spec.md` at repo root → `SPEC_DIR = .`; workspace stays at repo root (the common case).
+- **Gist** — `SPEC_DIR = .` (repo root). Gists have no parent dir on disk; state goes alongside the repo.
+
+Record the resolved path at the top of `autocraft/journey-loop-state.md` as `Workspace: {SPEC_DIR}/autocraft/` so agents and resume logic see the same value.
+
+**`AGENTS.md` exception.** `AGENTS.md` always lives at repo root — it is project-wide rules shared across specs, not part of the per-spec workspace.
+
+**Every `autocraft/...` path in this document and in agent prompts is understood to mean `{SPEC_DIR}/autocraft/...`.** When you include paths in an agent's launch directive, pass the resolved path (e.g., `specs/feature-a/autocraft/journeys/001-foo/`), not the relative form.
 
 ## Step 2: Load Playbooks
 
@@ -112,7 +125,7 @@ Playbooks are platform-specific knowledge bases stored as markdown files inside 
 
 ### Load protocol
 
-1. Locate the skill's `playbooks/` directory. When running via Claude Code skills, its absolute path is the skill directory (resolved by the harness) + `/playbooks/`. When a project wants to override with its own set, a `playbooks_path` key in the repo-root `.autocraft` file takes precedence and is read relative to repo root.
+1. Locate the skill's `playbooks/` directory. When running via Claude Code skills, its absolute path is the skill directory (resolved by the harness) + `/playbooks/`. When a project wants to override with its own set, a `playbooks_path` key in `autocraft/config.json` (resolved relative to the spec file's parent dir) takes precedence and is read relative to that same dir.
 2. Read the registry at `playbooks/registry.json`. Example:
    ```json
    {
@@ -153,12 +166,13 @@ A "section" starts at a matching `# ` heading and ends at the next `# ` heading 
 
 ## Step 3: Build Acceptance Criteria Master List
 
-Read the spec in full (local file or `gh gist view <gist-id> -f spec.md`). For every requirement, extract EVERY acceptance criterion. Write to `.autocraft/journey-loop-state.md`:
+Read the spec in full (local file or `gh gist view <gist-id> -f spec.md`). For every requirement, extract EVERY acceptance criterion. Write to `autocraft/journey-loop-state.md`:
 
 ```markdown
 # Journey Loop State
 
 **Spec:** <path>
+**Workspace:** <SPEC_DIR>/autocraft/
 **Started:** <timestamp>
 **Current Iteration:** 1
 **Status:** running
@@ -171,10 +185,10 @@ Total acceptance criteria: M
 |----|-------------|-------------|----------------|
 ```
 
-Read `.autocraft/journey-state.md` to determine what to work on:
-1. Check `.autocraft/feedback-log.md` for **blocking** items — address these first
+Read `autocraft/journey-state.md` to determine what to work on:
+1. Check `autocraft/feedback-log.md` for **blocking** items — address these first
 2. Any `in-progress` or `needs-extension` → work on that next
-3. Check `.autocraft/feedback-log.md` for **important** items — incorporate into next agent launch
+3. Check `autocraft/feedback-log.md` for **important** items — incorporate into next agent launch
 4. If none, pick next uncovered spec requirement
 
 ## Step 4: Pre-Build Simulation Scan
@@ -190,14 +204,14 @@ Every agent launch includes these **standard items** in the prompt:
 2. Mandatory Agent Launch Directives (from above)
 3. Playbook content from Step 2 — general sections for all agents, `# Role: {Agent}` section for that agent only, `# Template:` sections for Tester only.
 4. Directive to read `AGENTS.md` for project-specific rules
-5. Current `.autocraft/journey-state.md`
-6. Any agent-routed feedback from `.autocraft/feedback-log.md`
+5. Current `autocraft/journey-state.md`
+6. Any agent-routed feedback from `autocraft/feedback-log.md`
 
 Steps 5, 8, and 10 below list only the **additional items** specific to each agent.
 
 ## Step 5: Launch Builder Agent (background)
 
-**Builder skip:** If no production code changes are needed (e.g., pure test refactoring), skip to Step 7. Record in `.autocraft/journey-loop-state.md`: `Builder: skipped (no production code changes needed)`.
+**Builder skip:** If no production code changes are needed (e.g., pure test refactoring), skip to Step 7. Record in `autocraft/journey-loop-state.md`: `Builder: skipped (no production code changes needed)`.
 
 Launch Builder (background) with standard items plus:
 - Directive: which journey to build/extend, plus any simulation fixes from Step 4
@@ -234,7 +248,7 @@ For each acceptance criterion mapped to this journey, ask: **"Does verifying thi
 
 ### Journey skeleton
 
-Write to `.autocraft/journeys/{NNN}-{name}/journey.md`:
+Write to `autocraft/journeys/{NNN}-{name}/journey.md`:
 
 ```markdown
 # Journey {NNN}: {short name}
@@ -279,7 +293,7 @@ Write to `.autocraft/journeys/{NNN}-{name}/journey.md`:
 1. **Every step names a locator.** No "click the usual button" — the Tester will sharpen, but you seed concrete identifiers (accessibility ids, selectors) from the Builder's testability notes.
 2. **Every PASS clause is adversarial.** Ask "if the Builder left the handler empty but kept the UI element visible, would the clause still look green?" If yes, strengthen — name exact text, specific non-error content.
 3. **Every PASS clause names its evidence artifact.** The executor must produce a screenshot or source xml fragment the Inspector can open and verify. "Pass: it works" without evidence is auto-rejected by Inspector Scan B3.
-4. **Hazards section is not empty.** Pull from the Builder's testability notes, known platform quirks (`driving-macos-with-wda-vision` SKILL.md's Common Mistakes list is a good seed for macOS), and any failure modes from prior journey iterations in `.autocraft/journey-refinement-log.md`.
+4. **Hazards section is not empty.** Pull from the Builder's testability notes, known platform quirks (`driving-macos-with-wda-vision` SKILL.md's Common Mistakes list is a good seed for macOS), and any failure modes from prior journey iterations in `autocraft/journey-refinement-log.md`.
 5. **One journey = one connected flow.** If the criteria require contradictory preconditions or a hard process restart, split into multiple journeys rather than one with conditional branches.
 
 ## Step 7: Generate Integration Test Contract & Refactor if Needed
@@ -318,11 +332,11 @@ If a component can't be tested in isolation (e.g., business logic is tangled wit
 
 The Builder refactors, the Orchestrator re-analyzes, then generates the integration test contract.
 
-**Loop limit:** If after 2 refactoring attempts the component is still not testable in isolation, skip integration tests for this journey and note the gap in `.autocraft/journey-refinement-log.md`.
+**Loop limit:** If after 2 refactoring attempts the component is still not testable in isolation, skip integration tests for this journey and note the gap in `autocraft/journey-refinement-log.md`.
 
 ### Integration test contract
 
-Write to `.autocraft/journeys/{NNN}-{name}/integration-test-contract.md`:
+Write to `autocraft/journeys/{NNN}-{name}/integration-test-contract.md`:
 
 ```markdown
 # Integration Test Contract: Journey {NNN}
@@ -398,7 +412,7 @@ Write to `.autocraft/journeys/{NNN}-{name}/integration-test-contract.md`:
 ## Step 8: Launch Tester Agent (background)
 
 Launch Tester (background) with standard items plus:
-- The UI journey draft (`.autocraft/journeys/{NNN}-{name}/journey.md`) if Step 6 ran
+- The UI journey draft (`autocraft/journeys/{NNN}-{name}/journey.md`) if Step 6 ran
 - The integration test contract (`integration-test-contract.md`) if Step 7 ran
 - The Builder's report (accessibility identifiers, testability notes, integration boundaries)
 - Directive: if both artifacts exist, run integration tests first (faster, catches plumbing), then execute the journey on top of a known-good backend. If only one artifact exists, run just that one.
@@ -406,7 +420,7 @@ Launch Tester (background) with standard items plus:
 
 ### Artifacts
 
-**Screen mode (UI journey).** The Tester spawns a separate Claude instance that runs the journey via `driving-macos-with-wda-vision` (macOS) or the Playwright MCP (web). The executor saves evidence to `.autocraft/journeys/{NNN}-{name}/screenshots/` and writes a PASS/FAIL report per criterion.
+**Screen mode (UI journey).** The Tester spawns a separate Claude instance that runs the journey via `driving-macos-with-wda-vision` (macOS) or the Playwright MCP (web). The executor saves evidence to `autocraft/journeys/{NNN}-{name}/screenshots/` and writes a PASS/FAIL report per criterion.
 
 **State mode (integration).** The Tester runs the test suite via the platform's native runner. Output files go where the runner writes them.
 
@@ -436,9 +450,9 @@ For each criterion in the integration contract:
 
 For the journey artifact and the executor's report:
 
-1. **journey.md exists and non-empty** at `.autocraft/journeys/{NNN}-{name}/journey.md`.
+1. **journey.md exists and non-empty** at `autocraft/journeys/{NNN}-{name}/journey.md`.
 2. **Executor report exists** — the Tester's Step 3B run produced a PASS/FAIL verdict log. Absence means the journey was never executed → FAIL, re-launch Tester.
-3. **Screenshot dir non-empty** — `.autocraft/journeys/{NNN}-{name}/screenshots/` has at least one image per criterion's EVIDENCE field → FAIL on missing.
+3. **Screenshot dir non-empty** — `autocraft/journeys/{NNN}-{name}/screenshots/` has at least one image per criterion's EVIDENCE field → FAIL on missing.
 4. **No `sleep` in Steps** — grep `journey.md` Steps section for `sleep N`, "wait N seconds", "after a bit". Any match → FAIL, Tester must replace with a named wait condition.
 5. **No vague pass clauses** — grep PASS: lines for banned phrases: "looks right", "works correctly", "no issues", "as expected" (without a follow-up specific predicate). Any match → FAIL.
 6. **Every AC has a PASS and EVIDENCE line** — structural completeness check on the journey markdown.
@@ -463,11 +477,11 @@ Wait for Inspector verdict.
 
 **If Inspector set `polished`:**
 1. Commit all changes (journey files, screenshots, app code, updated journey-state.md)
-2. Update `.autocraft/journey-loop-state.md` with iteration results
+2. Update `autocraft/journey-loop-state.md` with iteration results
 3. Move to next uncovered criteria
 
 **If Inspector set `needs-extension`:**
-1. Read Inspector's specific failure list from `.autocraft/journey-refinement-log.md`
+1. Read Inspector's specific failure list from `autocraft/journey-refinement-log.md`
 2. DO NOT commit
 3. Route each failure to the right agent:
    - **Production code issue** (feature doesn't work, stub, missing implementation, no accessibility ids for Screen mode) → re-launch **Builder**
@@ -516,6 +530,6 @@ Platform playbooks under `skills/autocraft/playbooks/` provide templates in `# T
 - **No iteration limit.** Loop runs until user stops or stop condition met.
 - **Stall detection:** If Builder or Tester produces no changes for 2 consecutive iterations, log and re-launch with Inspector's last failure list.
 - **Only the Analyst can modify the spec** (local `spec.md` or gist) — read-only for all other agents. The Analyst must confirm changes with the human before writing.
-- **`.autocraft/feedback-log.md` is append-only** — entries are never deleted, only marked resolved.
+- **`autocraft/feedback-log.md` is append-only** — entries are never deleted, only marked resolved.
 - **Playbook files are append-only.** New `# {category}: {short-name}` sections can be added to `skills/autocraft/playbooks/<platform>.md`; existing sections should not be deleted.
 - Recurring tasks auto-expire after 7 days if run via `/loop`.

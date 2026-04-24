@@ -98,8 +98,8 @@ Each exception function must re-establish its own preconditions from scratch. Fo
 
 The Orchestrator hands you one (and in hybrid journeys, two) of:
 
-- `.autocraft/journeys/{NNN}-{name}/integration-test-contract.md` — State mode
-- `.autocraft/journeys/{NNN}-{name}/journey.md` — Screen mode
+- `autocraft/journeys/{NNN}-{name}/integration-test-contract.md` — State mode
+- `autocraft/journeys/{NNN}-{name}/journey.md` — Screen mode
 
 Read whichever exists. If both exist (hybrid), State mode integration tests run first (faster, catches plumbing bugs), then Screen mode journey runs on top of a known-good backend.
 
@@ -136,7 +136,7 @@ Flags that bypass real processing are BANNED. The playbook lists platform-specif
 
 ## Tester Step 2B: Screen mode — Sharpen the Journey
 
-The Orchestrator has drafted `.autocraft/journeys/{NNN}-{name}/journey.md` with Goal, Preconditions, Steps, Pass/Fail per criterion, and a Hazards section. Your job is to make every step executable by a fresh Claude instance that has never seen this codebase. For each step:
+The Orchestrator has drafted `autocraft/journeys/{NNN}-{name}/journey.md` with Goal, Preconditions, Steps, Pass/Fail per criterion, and a Hazards section. Your job is to make every step executable by a fresh Claude instance that has never seen this codebase. For each step:
 
 - **Replace every implicit reference with an explicit locator.** "Click the Save button" → "Click the button with accessibility id `saveButton`". If the Builder didn't add an identifier, escalate — a Screen mode journey cannot rely on pixel coordinates or text-only matching for production work.
 - **Replace every `sleep N` with a wait condition.** "Wait 3s" → "Wait until element `savedToast` exists, timeout 5s". If a step has no observable wait condition, the executor will guess; guessing is flaky.
@@ -161,13 +161,13 @@ If the platform supports separate build and test commands, split them so build e
 Spawn a fresh Claude instance to run the sharpened journey:
 
 ```
-claude -p "$(cat .autocraft/journeys/{NNN}-{name}/journey.md)"
+claude -p "$(cat autocraft/journeys/{NNN}-{name}/journey.md)"
 ```
 
 The executor has access to `driving-macos-with-wda-vision` (macOS) or the Playwright MCP (web). It reads the journey, walks it step by step, takes screenshots before every decision, and writes a PASS/FAIL report with:
 
 - Per-criterion verdict
-- Paths to evidence screenshots / tree dumps under `.autocraft/journeys/{NNN}-{name}/screenshots/`
+- Paths to evidence screenshots / tree dumps under `autocraft/journeys/{NNN}-{name}/screenshots/`
 - Any hazards it encountered and how it handled them
 - Any step where the UI didn't match the journey's expectation (locator missing, Pass clause ambiguous, etc.)
 
@@ -180,7 +180,7 @@ The executor has access to `driving-macos-with-wda-vision` (macOS) or the Playwr
 After running integration tests or executing the journey:
 
 1. **Check for failures** — fix any failing tests / resolve FAIL verdicts before proceeding
-2. **Screen mode: Read every screenshot** the executor produced under `.autocraft/journeys/{NNN}-{name}/screenshots/` (use `mac2.sh screenshot`-style shrunk images when available). Confirm visually that the evidence actually supports the executor's verdict. If a screenshot shows the feature didn't work but the executor reported PASS, the journey's Pass clause is too permissive — sharpen and re-run.
+2. **Screen mode: Read every screenshot** the executor produced under `autocraft/journeys/{NNN}-{name}/screenshots/` (use `mac2.sh screenshot`-style shrunk images when available). Confirm visually that the evidence actually supports the executor's verdict. If a screenshot shows the feature didn't work but the executor reported PASS, the journey's Pass clause is too permissive — sharpen and re-run.
 3. **State mode: Read the test run output** — "87 tests, 0 failures" is insufficient. Look for warnings, skipped tests, flaky retries.
 4. **Report test count / verdict summary** — "State mode: 12 tests, 0 failures. Screen mode: 3 criteria, 3 PASS."
 

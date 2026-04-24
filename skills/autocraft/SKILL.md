@@ -17,7 +17,7 @@ Five agents. Strict roles. No self-grading. Human in the loop.
 Human ◄──► Analyst (foreground agent)
                │
                ├──► spec.md (writes/updates)
-               ├──► .autocraft/feedback-log.md (routes feedback)
+               ├──► autocraft/feedback-log.md (routes feedback)
                │
                ▼
            Orchestrator (you) ──► Builder (background agent)
@@ -71,7 +71,7 @@ Behavior follows from the routed criteria, not from a project-level flag:
 **Special command:** If `$ARGUMENTS` is `init`, run the init flow instead of the build loop:
 
 1. Copy `{skill-base-dir}/claude-md-template.md` to `CLAUDE.md` in the user's project root
-2. Create `.autocraft/` directory if it doesn't exist
+2. Create `autocraft/` directory if it doesn't exist
 3. Tell the user: "Analyst is now always-on in this project. Just talk naturally — I'll handle specs, feedback routing, and build triggers automatically."
 4. **Do not start the build loop.** Return immediately.
 
@@ -102,23 +102,25 @@ gh gist view <gist-id> --files
 
 **Error handling:** If `gh gist view` fails, print the error, ask the user to verify the gist URL and run `gh auth status`, and do not proceed until the spec is readable.
 
-The Orchestrator detects the source type at startup and stores it in `.autocraft/journey-loop-state.md` as `Spec source: gist:<gist-id>` or `Spec source: file:<path>`. All agents read the spec through a consistent method — the Orchestrator fetches the latest content and includes it in each agent's prompt. The Analyst writes spec updates to a temp file then pushes via `gh api`.
+The Orchestrator detects the source type at startup and stores it in `autocraft/journey-loop-state.md` as `Spec source: gist:<gist-id>` or `Spec source: file:<path>`. All agents read the spec through a consistent method — the Orchestrator fetches the latest content and includes it in each agent's prompt. The Analyst writes spec updates to a temp file then pushes via `gh api`.
 
 ---
 
 ## Shared State Files
 
+**Path resolution.** The `autocraft/` workspace is resolved relative to the **spec file's parent directory**, not repo root. If `spec.md` sits at repo root, `autocraft/` sits at repo root too (the common case, unchanged). If you keep specs in subdirs — e.g. `specs/feature-a/spec.md` — then `autocraft/` lives at `specs/feature-a/autocraft/`, isolated from other specs in the same repo. `AGENTS.md` is the one exception: it stays at repo root (project-wide, shared across specs).
+
 | File | Written by | Read by |
 |------|-----------|---------|
-| `.autocraft/journeys/*/` | Builder (code), Tester (tests/journey artifacts) | Inspector, Orchestrator |
-| `.autocraft/journeys/*/journey.md` | **Orchestrator** (drafts skeleton), **Tester** (sharpens locators/waits/Pass clauses) | Journey executor (Claude instance), Inspector |
-| `.autocraft/journeys/*/integration-test-contract.md` | **Orchestrator** | **Tester** (implements as code), Inspector (validates) |
-| `.autocraft/journeys/*/screenshots/` | Screen mode journey executor | Inspector (Phase 1B evidence check + Phase 2c sanity review) |
-| `.autocraft/journey-state.md` | Tester (`needs-review`), Inspector (`polished`/`needs-extension`) | All |
-| `.autocraft/journey-refinement-log.md` | Inspector | Orchestrator |
-| `.autocraft/journey-loop-state.md` | Orchestrator | Orchestrator (resume) |
+| `autocraft/journeys/*/` | Builder (code), Tester (tests/journey artifacts) | Inspector, Orchestrator |
+| `autocraft/journeys/*/journey.md` | **Orchestrator** (drafts skeleton), **Tester** (sharpens locators/waits/Pass clauses) | Journey executor (Claude instance), Inspector |
+| `autocraft/journeys/*/integration-test-contract.md` | **Orchestrator** | **Tester** (implements as code), Inspector (validates) |
+| `autocraft/journeys/*/screenshots/` | Screen mode journey executor | Inspector (Phase 1B evidence check + Phase 2c sanity review) |
+| `autocraft/journey-state.md` | Tester (`needs-review`), Inspector (`polished`/`needs-extension`) | All |
+| `autocraft/journey-refinement-log.md` | Inspector | Orchestrator |
+| `autocraft/journey-loop-state.md` | Orchestrator | Orchestrator (resume) |
 | `AGENTS.md` (repo root) | Inspector | Builder, Tester (each restart) |
-| `.autocraft/feedback-log.md` | Analyst | Orchestrator, Builder, Tester, Inspector |
+| `autocraft/feedback-log.md` | Analyst | Orchestrator, Builder, Tester, Inspector |
 
 ---
 
@@ -126,7 +128,7 @@ The Orchestrator detects the source type at startup and stores it in `.autocraft
 
 Playbooks are platform-specific knowledge bases that live inside this skill at `skills/autocraft/playbooks/`. The Orchestrator reads them once per invocation and injects the content directly into each agent's prompt (see [orchestrator.md](orchestrator.md) Step 2). No network, no gist — just files.
 
-Projects can override the path via a `.autocraft` file at repo root (`"playbooks_path": "tools/my-playbooks/"`). See [playbooks.md](playbooks.md) for the registry format, entry format, and how to add or update a platform.
+Projects can override the path via `autocraft/config.json` (`"playbooks_path": "tools/my-playbooks/"`). See [playbooks.md](playbooks.md) for the registry format, entry format, and how to add or update a platform.
 
 ---
 
@@ -144,7 +146,7 @@ The full 12-step orchestrator protocol — including agent launch directives, mo
 | Screen mode journey PASS clause too vague ("looks right") | Inspector's Scan B3 auto-rejects. Rewrite to name a specific element, exact text, or property value that the executor can verify |
 | Screenshots show permission dialogs | Run `/preflight-permissions` first to grant all TCC permissions |
 | Loop stalls with no progress for multiple iterations | Stall detection: if no changes for 2 iterations, re-launch with Inspector's last failure list |
-| Playbook file missing or path resolves nowhere | Check `playbooks/registry.json` and `.autocraft` override path; the Orchestrator warns and runs without playbooks, but agent quality drops |
+| Playbook file missing or path resolves nowhere | Check `playbooks/registry.json` and `autocraft/config.json` override path; the Orchestrator warns and runs without playbooks, but agent quality drops |
 
 ---
 

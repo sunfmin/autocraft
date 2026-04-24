@@ -54,7 +54,7 @@ Run these against the `journey.md` and the executor's report. No code grep — e
 | B2 | Wait Discipline | No `sleep N` / "wait a moment" / "after a bit" — every wait names a condition | `journey.md` Steps section | Flaky on slow machines, false-fail on fast ones |
 | B3 | Pass/Fail Concreteness | Each criterion's Pass clause names a specific visible-state predicate (named element, exact text, observable property) + evidence artifact (screenshot path, source xml fragment) | `journey.md` Pass/Fail section | Two runs on same code could disagree |
 | B4 | Hazards Coverage | Hazards section is non-empty and covers at least one of: setup/wizard overlays, focus loss to automation driver, async UI rendering, permission dialogs | `journey.md` Hazards section | Executor will trip on a known edge |
-| B5 | Evidence Produced | Every Pass clause's named evidence artifact actually exists under `.autocraft/journeys/{NNN}-{name}/screenshots/` or in the executor's log | Executor's artifact dir | Executor claimed pass without proof |
+| B5 | Evidence Produced | Every Pass clause's named evidence artifact actually exists under `autocraft/journeys/{NNN}-{name}/screenshots/` or in the executor's log | Executor's artifact dir | Executor claimed pass without proof |
 | B6 | Verdict-Evidence Agreement | Open 2–3 of the executor's screenshots. Does the pixel content actually support the reported verdict? A PASS claim over a screenshot showing an error dialog is a disagreement. | Sample of executor screenshots | Executor or journey is self-deceiving |
 | B7 | No Unresolved Ambiguity | Executor's report contains no "I wasn't sure / used judgment to decide / couldn't tell" phrases | Executor's report | Journey is underspecified — Tester owes a Step 2B sharpening pass |
 
@@ -88,7 +88,7 @@ The Tester already executed the journey once. As Inspector you don't need to re-
 
 ### 2c. Screenshot Review
 
-When screenshots exist, they are the truth. Read every PNG the executor produced under `.autocraft/journeys/{NNN}-{name}/screenshots/`. For each:
+When screenshots exist, they are the truth. Read every PNG the executor produced under `autocraft/journeys/{NNN}-{name}/screenshots/`. For each:
 
 - **Visual sanity — would a real user consider this broken?** Look for: garbled escape codes (`[0m`, `[27m`), placeholder/lorem-ipsum content, overlapping or clipped elements, unreadable text, blank areas where content should be, corrupted rendering. If ANY screenshot would make a user say "this is broken" → **FAIL the journey** regardless of scan results.
 - **Incomplete flows — is the feature stuck waiting for input?** Confirmation dialogs, permission prompts, error messages, loading spinners, CLI tools asking "Y/n?", login screens. If a screenshot shows a feature that started but didn't finish because it's blocked on interaction → **FAIL**. The Builder must handle the interaction automatically (pre-configure, auto-confirm, or bypass).
@@ -124,7 +124,7 @@ Existence-only assertions (State mode) and "looks right" claims (Screen mode) do
 - `polished`: ALL scans pass, score ≥ 90%, every criterion has genuine evidence
 - `needs-extension`: any scan failed, or score < 90%, or any criterion lacks evidence. List EVERY specific failure with file:line references (State mode) or journey.md line + evidence path (Screen mode) so Builder/Tester knows exactly what to fix.
 
-Write verdict to `.autocraft/journey-refinement-log.md` (append, never overwrite).
+Write verdict to `autocraft/journey-refinement-log.md` (append, never overwrite).
 
 ## Inspector Phase 4: Improve Instructions
 

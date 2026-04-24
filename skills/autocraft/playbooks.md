@@ -36,7 +36,7 @@ Each platform playbook is a single markdown file containing multiple `# {Heading
 
 ## Project-level override
 
-A project can point autocraft at a different playbook set by writing `.autocraft` at its repo root:
+A project can point autocraft at a different playbook set by writing `autocraft/config.json` alongside `spec.md`:
 
 ```json
 {
@@ -45,7 +45,7 @@ A project can point autocraft at a different playbook set by writing `.autocraft
 ```
 
 Resolution order:
-1. `.autocraft` → `playbooks_path` relative to repo root
+1. `autocraft/config.json` → `playbooks_path` relative to the spec file's parent directory
 2. Fallback → the skill's own `skills/autocraft/playbooks/`
 
 ## Adding a new playbook
