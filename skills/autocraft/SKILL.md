@@ -55,6 +55,8 @@ If no criterion routes to a mode, that artifact isn't drafted. If the task has n
 
 **`init`** — copy `{skill-base-dir}/claude-md-template.md` to `CLAUDE.md` at project root (append under a `# Autocraft Analyst` heading if `CLAUDE.md` already exists), create `autocraft/` if missing, tell the user "Analyst is now always-on in this project; just talk naturally." Do not start the build loop.
 
+> **Two Analyst files, different jobs.** `claude-md-template.md` is the lightweight always-on Analyst that lives in the user's `CLAUDE.md` and classifies every casual message. `analyst.md` is the full role spec the Orchestrator injects when it spawns an Analyst agent during the build loop.
+
 **Spec source.** Local path → read directly. Gist URL (`https://gist.github.com/...`) or bare 20+ hex ID → fetch via `gh gist view <id> -f spec.md`. See [orchestrator.md](orchestrator.md) Step 1 for detection rules, gist error handling, and resume logic. Only the Analyst writes to the spec (local file or gist).
 
 ---

@@ -25,10 +25,6 @@
 
 **The Orchestrator itself must also follow these rules** when running post-gate checks, compliance scans, or any build/test commands.
 
-## Analyst Integration (MANDATORY)
-
-Every invocation where `$ARGUMENTS` contains natural language (not a file path or "continue") MUST launch the Analyst FIRST. The Analyst logs feedback to `autocraft/feedback-log.md` and optionally updates `spec.md`. The Orchestrator MUST NOT skip the Analyst when the user provides feedback. During the loop, check `autocraft/feedback-log.md` at every handoff point for new entries. Route feedback items to the appropriate agent as part of their next launch directive.
-
 ```dot
 digraph orchestrator_loop {
     rankdir=TB;
