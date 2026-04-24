@@ -150,7 +150,7 @@ Use `app.descendants(matching: .any)["myId"]` for element lookup.
 
 # macOS UI Testing Approach
 
-macOS UI acceptance criteria go through **Mode B journeys** — natural-language `journey.md` executed by a separate Claude instance with vision via the `driving-macos-with-wda-vision` skill (WebDriverAgentMac + Appium + `mac2.sh`). There is no XCUITest UI test target, no in-process test harness.
+macOS UI acceptance criteria go through **Screen mode journeys** — natural-language `journey.md` executed by a separate Claude instance with vision via the `driving-macos-with-wda-vision` skill (WebDriverAgentMac + Appium + `mac2.sh`). There is no XCUITest UI test target, no in-process test harness.
 
 Only pure-Swift integration tests (service layer, repositories, value logic) run as XCTest — these do not launch or drive the UI.
 
@@ -271,13 +271,13 @@ Use `os_log` with `%{public}@`, never `print()`.
 
 # Role: Tester (macOS)
 
-## UI Criteria → Mode B Journeys (No XCTest Code)
+## UI Criteria → Screen mode Journeys (No XCTest Code)
 
-Mode B criteria are verified by running `journey.md` through the `driving-macos-with-wda-vision` skill (spawn a fresh Claude instance with `claude -p`). Do NOT write XCTest / XCUITest code for UI verification. The journey markdown IS the test.
+Screen mode criteria are verified by running `journey.md` through the `driving-macos-with-wda-vision` skill (spawn a fresh Claude instance with `claude -p`). Do NOT write XCTest / XCUITest code for UI verification. The journey markdown IS the test.
 
 ## Integration Criteria → XCTest
 
-Mode A criteria for pure-Swift code (service layer, repositories, parsers, value logic) run as XCTest unit/integration tests that do not launch the UI. Subclass `XCTestCase` directly.
+State mode criteria for pure-Swift code (service layer, repositories, parsers, value logic) run as XCTest unit/integration tests that do not launch the UI. Subclass `XCTestCase` directly.
 
 ## Forbidden Guard Patterns (Swift)
 
@@ -294,7 +294,7 @@ let dir = findDirectory()
 XCTAssertFalse(dir.isEmpty, "findDirectory() must return a non-empty path")
 ```
 
-## Behavioral Assertion Pattern (Mode A, before/after)
+## Behavioral Assertion Pattern (State mode, before/after)
 
 ```swift
 let before = service.currentState()
@@ -377,7 +377,7 @@ echo "=== Test data generators in production ==="
 grep -rn "testSentences\|generateTest\|hardcodedSegments" . --include="*.swift" | grep -v "Tests" || echo "CLEAN"
 ```
 
-## Contract Compliance Validation (Mode A XCTest files)
+## Contract Compliance Validation (State mode XCTest files)
 
 ```bash
 TEST_FILE="<path/to/IntegrationTestFile>.swift"

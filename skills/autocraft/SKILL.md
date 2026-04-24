@@ -27,9 +27,9 @@ Human ◄──► Analyst (foreground agent)
 
 The **Analyst** talks to the human, collects feedback, writes and updates spec.md, and routes actionable feedback to the right agent. → [analyst.md](analyst.md)
 The **Builder** implements features but CANNOT write tests, review its own work, grade itself, or commit. → [builder.md](builder.md)
-The **Tester** works in two modes — **Mode A** writes assertion-based integration tests; **Mode B** sharpens a `journey.md` scenario and spawns a separate Claude instance to run it with vision. Cannot modify production code. → [tester.md](tester.md)
-The **Inspector** audits both modes — forensic code scans for Mode A, journey-structure scans + screenshot-evidence review for Mode B. Only the Inspector can set "polished." → [inspector.md](inspector.md)
-The **Orchestrator** routes each acceptance criterion by mode ("verify needs eyes on screen?" → Mode B; observable state → Mode A; hybrid → both) and commits only when the Inspector approves. → [orchestrator.md](orchestrator.md)
+The **Tester** works in two modes — **State mode** writes assertion-based integration tests; **Screen mode** sharpens a `journey.md` scenario and spawns a separate Claude instance to run it with vision. Cannot modify production code. → [tester.md](tester.md)
+The **Inspector** audits both modes — forensic code scans for State mode, journey-structure scans + screenshot-evidence review for Screen mode. Only the Inspector can set "polished." → [inspector.md](inspector.md)
+The **Orchestrator** routes each acceptance criterion by mode ("verify needs eyes on screen?" → Screen mode; observable state → State mode; hybrid → both) and commits only when the Inspector approves. → [orchestrator.md](orchestrator.md)
 
 **Why this separation matters:** A builder who writes their own tests optimizes for tests that pass — not for tests that prove features work. A separate tester reads the contract, exercises the pipeline, and checks what came out. If the output is wrong, they write a failing test — and the builder has to make it pass.
 
@@ -38,7 +38,7 @@ The **Orchestrator** routes each acceptance criterion by mode ("verify needs eye
 ## When to Use
 
 - Building a new app or feature set from a spec with multiple acceptance criteria
-- You want automated, verified proof that every criterion is met — **Mode B journey** (markdown scenario executed by Claude with vision) for UI-visible criteria; **Mode A integration tests** (assertion-based) for observable-state criteria (API responses, file contents, exit codes)
+- You want automated, verified proof that every criterion is met — **Screen mode journey** (markdown scenario executed by Claude with vision) for UI-visible criteria; **State mode integration tests** (assertion-based) for observable-state criteria (API responses, file contents, exit codes)
 - The project needs real implementations (not stubs) with independent test verification
 - Consolidating or refactoring tests into scenario-based integration tests
 - Building or testing CLI tools, libraries, or APIs where data pipeline correctness matters
@@ -54,13 +54,13 @@ The **Orchestrator** routes each acceptance criterion by mode ("verify needs eye
 
 Every acceptance criterion is routed by the Orchestrator (see Step 6 "Mode routing rule"):
 
-- **Mode A (`integration-test-contract.md`)** — verification is about observable state: API payloads, file contents, DB rows, exit codes
-- **Mode B (`journey.md`)** — verification requires eyes on screen: layout, toasts, modals, visual regressions, crash-free interactions
+- **State mode (`integration-test-contract.md`)** — verification is about observable state: API payloads, file contents, DB rows, exit codes
+- **Screen mode (`journey.md`)** — verification requires eyes on screen: layout, toasts, modals, visual regressions, crash-free interactions
 - **Hybrid** — both matter; both artifacts generated, both must pass
 
 Behavior follows from the routed criteria, not from a project-level flag:
-- If no criterion routes to Mode B, no `journey.md` is drafted (Step 6 produces nothing).
-- If no criterion routes to Mode A, no `integration-test-contract.md` is drafted (Step 7 produces nothing).
+- If no criterion routes to Screen mode, no `journey.md` is drafted (Step 6 produces nothing).
+- If no criterion routes to State mode, no `integration-test-contract.md` is drafted (Step 7 produces nothing).
 - If the task has no production code changes (e.g., pure test refactoring), the Builder is skipped.
 - The Inspector runs only the scans relevant to the artifacts that exist.
 
@@ -113,7 +113,7 @@ The Orchestrator detects the source type at startup and stores it in `.autocraft
 | `.autocraft/journeys/*/` | Builder (code), Tester (tests/journey artifacts) | Inspector, Orchestrator |
 | `.autocraft/journeys/*/journey.md` | **Orchestrator** (drafts skeleton), **Tester** (sharpens locators/waits/Pass clauses) | Journey executor (Claude instance), Inspector |
 | `.autocraft/journeys/*/integration-test-contract.md` | **Orchestrator** | **Tester** (implements as code), Inspector (validates) |
-| `.autocraft/journeys/*/screenshots/` | Mode B journey executor | Inspector (Phase 1B evidence check + Phase 2c sanity review) |
+| `.autocraft/journeys/*/screenshots/` | Screen mode journey executor | Inspector (Phase 1B evidence check + Phase 2c sanity review) |
 | `.autocraft/journey-state.md` | Tester (`needs-review`), Inspector (`polished`/`needs-extension`) | All |
 | `.autocraft/journey-refinement-log.md` | Inspector | Orchestrator |
 | `.autocraft/journey-loop-state.md` | Orchestrator | Orchestrator (resume) |
@@ -140,8 +140,8 @@ The full 12-step orchestrator protocol — including agent launch directives, mo
 
 | Mistake | Fix |
 |---------|-----|
-| Mode A contract assertions too strict for current implementation stage | Write contracts that match what's testable now, tighten in later iterations |
-| Mode B journey PASS clause too vague ("looks right") | Inspector's Scan B3 auto-rejects. Rewrite to name a specific element, exact text, or property value that the executor can verify |
+| State mode contract assertions too strict for current implementation stage | Write contracts that match what's testable now, tighten in later iterations |
+| Screen mode journey PASS clause too vague ("looks right") | Inspector's Scan B3 auto-rejects. Rewrite to name a specific element, exact text, or property value that the executor can verify |
 | Screenshots show permission dialogs | Run `/preflight-permissions` first to grant all TCC permissions |
 | Loop stalls with no progress for multiple iterations | Stall detection: if no changes for 2 iterations, re-launch with Inspector's last failure list |
 | Playbook file missing or path resolves nowhere | Check `playbooks/registry.json` and `.autocraft` override path; the Orchestrator warns and runs without playbooks, but agent quality drops |
@@ -154,8 +154,8 @@ These skills enhance autocraft but are not required. If not installed, autocraft
 
 | Skill | Used by | Purpose |
 |-------|---------|---------|
-| `driving-macos-with-wda-vision` | Mode B journey executor (spawned by Tester) | macOS UI automation via WebDriverAgentMac + Appium + vision. Required for Mode B journeys on macOS apps. |
-| Playwright MCP | Mode B journey executor (spawned by Tester) | Browser UI automation for web apps. Required for Mode B journeys on web projects. |
-| `/frontend-design` | Inspector (via Orchestrator) | Design principles for Mode B screenshot review. If missing, Inspector uses general design judgment. |
+| `driving-macos-with-wda-vision` | Screen mode journey executor (spawned by Tester) | macOS UI automation via WebDriverAgentMac + Appium + vision. Required for Screen mode journeys on macOS apps. |
+| Playwright MCP | Screen mode journey executor (spawned by Tester) | Browser UI automation for web apps. Required for Screen mode journeys on web projects. |
+| `/frontend-design` | Inspector (via Orchestrator) | Design principles for Screen mode screenshot review. If missing, Inspector uses general design judgment. |
 | `/attack-blocker` | Builder | Structured approach to resolving permission/hardware blockers. If missing, Builder reports blockers to Orchestrator directly. |
 | `/preflight-permissions` | User (before first run) | Grants macOS TCC permissions. Bundled in this repo. |

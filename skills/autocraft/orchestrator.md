@@ -18,7 +18,7 @@
 > When the next step is obvious (clear gap, failing test, missing implementation), proceed immediately. Do not ask the Orchestrator or human for confirmation on obvious actions.
 >
 > **NAMED WAIT CONDITIONS, NOT SLEEPS:**
-> In Mode A test code (integration), use event-driven wait primitives, not `sleep()`. In Mode B journey markdown, every wait step names the element or state being awaited ("wait until element `savedToast` exists, timeout 5s"), never a duration. Step 9 greps for `sleep N` in journey.md and auto-rejects any match.
+> In State mode test code (integration), use event-driven wait primitives, not `sleep()`. In Screen mode journey markdown, every wait step names the element or state being awaited ("wait until element `savedToast` exists, timeout 5s"), never a duration. Step 9 greps for `sleep N` in journey.md and auto-rejects any match.
 
 **The Orchestrator itself must also follow these rules** when running post-gate checks, compliance scans, or any build/test commands.
 
@@ -216,20 +216,20 @@ After the Builder completes, verify it followed the rules. Run the platform-spec
 
 If ANY violation: **re-launch the Builder** with the specific violation.
 
-## Step 6: Generate UI Journey (Mode B criteria)
+## Step 6: Generate UI Journey (Screen mode criteria)
 
-**Skip this step if no criterion in the current batch routes to Mode B.** Proceed directly to Step 7.
+**Skip this step if no criterion in the current batch routes to Screen mode.** Proceed directly to Step 7.
 
-**This is the critical structural step** when Mode B criteria exist. The Orchestrator — not the Tester — defines what the journey must prove. The Tester only sharpens and executes it.
+**This is the critical structural step** when Screen mode criteria exist. The Orchestrator — not the Tester — defines what the journey must prove. The Tester only sharpens and executes it.
 
-UI acceptance criteria are verified by **Mode B**: a natural-language `journey.md` executed by a separate Claude instance with vision (via `driving-macos-with-wda-vision` for macOS, Playwright MCP for web). The Orchestrator drafts the journey skeleton; the Tester fills in concrete locators and executes.
+UI acceptance criteria are verified by **Screen mode**: a natural-language `journey.md` executed by a separate Claude instance with vision (via `driving-macos-with-wda-vision` for macOS, Playwright MCP for web). The Orchestrator drafts the journey skeleton; the Tester fills in concrete locators and executes.
 
 ### Mode routing rule
 
 For each acceptance criterion mapped to this journey, ask: **"Does verifying this criterion require interpreting what's on screen — layout, visual state, a toast appearing, a modal that shouldn't be there?"**
 
-- **Yes** → criterion goes into `journey.md` (Mode B). Examples: "Save button shows 'Saving…' during upload", "error dialog appears with message X", "panel is resizable without crashing", "empty state shows when there are no items".
-- **No, observable state suffices** (API response, file contents, DB row, exit code, returned value) → criterion goes into `integration-test-contract.md` (Mode A, Step 7). Examples: "POST /api/save fires with payload {foo: 'bar'}", "CSV export contains header row", "parser returns AST with N nodes".
+- **Yes** → criterion goes into `journey.md` (Screen mode). Examples: "Save button shows 'Saving…' during upload", "error dialog appears with message X", "panel is resizable without crashing", "empty state shows when there are no items".
+- **No, observable state suffices** (API response, file contents, DB row, exit code, returned value) → criterion goes into `integration-test-contract.md` (State mode, Step 7). Examples: "POST /api/save fires with payload {foo: 'bar'}", "CSV export contains header row", "parser returns AST with N nodes".
 - **Hybrid criterion** (both matter) → generate BOTH artifacts. The journey verifies the user-visible half; the integration contract verifies the plumbing half. Both must pass.
 
 ### Journey skeleton
@@ -286,13 +286,13 @@ Write to `.autocraft/journeys/{NNN}-{name}/journey.md`:
 
 Generate an integration test contract whenever:
 
-- One or more criteria in the current batch routed to **Mode A** (observable-state verification), OR
-- A criterion routed to **Hybrid** (both Mode A and Mode B), OR
-- The Builder's new/modified code in a Mode-B-only batch introduces **silent failure risks** that the journey won't catch (see below).
+- One or more criteria in the current batch routed to **State mode** (observable-state verification), OR
+- A criterion routed to **Hybrid** (both State and Screen modes), OR
+- The Builder's new/modified code in a Screen-mode-only batch introduces **silent failure risks** that the journey won't catch (see below).
 
 If none of the above apply, skip this step.
 
-### Silent failure risks (Mode-B-only batches)
+### Silent failure risks (Screen-mode-only batches)
 
 Scan the Builder's code for risks that are invisible to the user but still wrong:
 
@@ -375,13 +375,13 @@ Launch Tester (background) with standard items plus:
 - The integration test contract (`integration-test-contract.md`) if Step 7 ran
 - The Builder's report (accessibility identifiers, testability notes, integration boundaries)
 - Directive: if both artifacts exist, run integration tests first (faster, catches plumbing), then execute the journey on top of a known-good backend. If only one artifact exists, run just that one.
-- If re-launch after rejection: the specific failure list with journey.md line numbers (Mode B) or test file:line references (Mode A)
+- If re-launch after rejection: the specific failure list with journey.md line numbers (Screen mode) or test file:line references (State mode)
 
 ### Artifacts
 
-**Mode B (UI journey).** The Tester spawns a separate Claude instance that runs the journey via `driving-macos-with-wda-vision` (macOS) or the Playwright MCP (web). The executor saves evidence to `.autocraft/journeys/{NNN}-{name}/screenshots/` and writes a PASS/FAIL report per criterion.
+**Screen mode (UI journey).** The Tester spawns a separate Claude instance that runs the journey via `driving-macos-with-wda-vision` (macOS) or the Playwright MCP (web). The executor saves evidence to `.autocraft/journeys/{NNN}-{name}/screenshots/` and writes a PASS/FAIL report per criterion.
 
-**Mode A (integration).** The Tester runs the test suite via the platform's native runner. Output files go where the runner writes them.
+**State mode (integration).** The Tester runs the test suite via the platform's native runner. Output files go where the runner writes them.
 
 Wait for Tester to complete.
 
@@ -393,7 +393,7 @@ Same checks as Post-Builder Gate. If ANY rule violation: **re-launch the Tester*
 
 After the Tester finishes, run mechanical checks to catch obvious screw-ups before burning an Inspector invocation. The checks differ by artifact:
 
-### Step 9A: Mode A (integration-test-contract.md present)
+### Step 9A: State mode (integration-test-contract.md present)
 
 For each criterion in the integration contract:
 
@@ -405,7 +405,7 @@ For each criterion in the integration contract:
 6. **Single-flow state machine?** — integration contracts with Phase ordering require a **single test function** that follows the Phase sequence (Phase 1 → Phase 2 → ... → Phase N). Splitting phases into separate test functions breaks state. Exceptions: criteria that require process relaunch or contradictory preconditions MAY be in separate functions.
 7. **Base class used correctly?** — if the project has an integration test base class, verify the test subclasses it AND calls the parent setup method instead of duplicating setup logic → FAIL
 
-### Step 9B: Mode B (journey.md present)
+### Step 9B: Screen mode (journey.md present)
 
 For the journey artifact and the executor's report:
 
@@ -427,8 +427,8 @@ If ANY check fails (in whichever section applies): **re-launch the Tester immedi
 Launch Inspector (foreground) with standard items plus:
 - Directive: evaluate the most recent journey
 - **Artifacts present** (journey.md / integration-test-contract.md / both) — Inspector runs only the scans matching the artifacts that exist
-- If `journey.md` exists: include `/frontend-design` output if installed (for Mode B screenshot-review design judgment)
-- If only `integration-test-contract.md` exists: directive to skip screenshot review, run Mode A Phase 1A scans + assertion honesty only
+- If `journey.md` exists: include `/frontend-design` output if installed (for Screen mode screenshot-review design judgment)
+- If only `integration-test-contract.md` exists: directive to skip screenshot review, run State mode Phase 1A scans + assertion honesty only
 
 Wait for Inspector verdict.
 
@@ -443,22 +443,22 @@ Wait for Inspector verdict.
 1. Read Inspector's specific failure list from `.autocraft/journey-refinement-log.md`
 2. DO NOT commit
 3. Route each failure to the right agent:
-   - **Production code issue** (feature doesn't work, stub, missing implementation, no accessibility ids for Mode B) → re-launch **Builder**
-   - **Mode A test issue** (existence-only assertion, missing interaction, wrong verification) → **update the integration test contract** to strengthen the failing assertions, then re-launch **Tester** with the updated contract + Inspector's failure list
-   - **Mode B journey issue** (vague Pass clause, missing evidence, uncovered hazard, executor reported ambiguity) → **update the journey.md draft** to tighten the failing Pass clauses and add missing Hazards, then re-launch **Tester** to sharpen + re-execute
+   - **Production code issue** (feature doesn't work, stub, missing implementation, no accessibility ids for Screen mode) → re-launch **Builder**
+   - **State mode test issue** (existence-only assertion, missing interaction, wrong verification) → **update the integration test contract** to strengthen the failing assertions, then re-launch **Tester** with the updated contract + Inspector's failure list
+   - **Screen mode journey issue** (vague Pass clause, missing evidence, uncovered hazard, executor reported ambiguity) → **update the journey.md draft** to tighten the failing Pass clauses and add missing Hazards, then re-launch **Tester** to sharpen + re-execute
    - **Both** → re-launch Builder first, then update contract / journey + re-launch Tester
    - **Visual/UX issue** (garbled rendering, incomplete flow, broken layout visible in screenshots) → re-launch **Builder** with the specific screenshot and failure description. The Builder must fix the root cause (e.g., use a proper rendering library, pre-configure interactive tools, handle prompts automatically).
 4. When updating artifacts after Inspector rejection:
-   - **Mode A contract** — for each failed criterion, tighten ASSERT to make the failure structurally impossible (e.g., if the Tester used `.exists` where the contract said `behavioral`, add an explicit example assertion). Add any missing FAIL_IF_BLOCKED messages the Inspector identified.
-   - **Mode B journey** — for each failed criterion, rewrite the PASS clause to name a more specific visible-state predicate + evidence artifact. If the executor reported "I wasn't sure", the clause is the problem — sharpen, don't override.
+   - **State mode contract** — for each failed criterion, tighten ASSERT to make the failure structurally impossible (e.g., if the Tester used `.exists` where the contract said `behavioral`, add an explicit example assertion). Add any missing FAIL_IF_BLOCKED messages the Inspector identified.
+   - **Screen mode journey** — for each failed criterion, rewrite the PASS clause to name a more specific visible-state predicate + evidence artifact. If the executor reported "I wasn't sure", the clause is the problem — sharpen, don't override.
 5. Go back to Step 5 (or Step 6/7/8 depending on failure type)
 
 ## Step 12: Pre-Stop Audit (when score >= 90% or all journeys polished)
 
 1. Read the Acceptance Criteria Master List (M rows)
 2. For each criterion: confirm journey maps it + test artifact exists + evidence exists:
-   - **Mode A criterion** → integration test function exists + test passes with a behavioral assertion
-   - **Mode B criterion** → `journey.md` has the criterion + executor's report marks it PASS + named evidence screenshot is present
+   - **State mode criterion** → integration test function exists + test passes with a behavioral assertion
+   - **Screen mode criterion** → `journey.md` has the criterion + executor's report marks it PASS + named evidence screenshot is present
    - **Hybrid criterion** → both of the above
 3. Build audit table with VERDICT column
 4. If uncovered > 0: do NOT stop. Re-launch Builder (or Tester) for gaps.
@@ -470,7 +470,7 @@ ALL of:
 - Inspector score >= 95%
 - All journeys set to `polished` by Inspector (not by Builder)
 - Pre-stop audit: 0 uncovered criteria
-- All objective scans pass (Mode A: no bypass flags, no stubs, no empty artifacts. Mode B: no vague Pass clauses, no sleeps, executor report agrees with screenshots.)
+- All objective scans pass (State mode: no bypass flags, no stubs, no empty artifacts. Screen mode: no vague Pass clauses, no sleeps, executor report agrees with screenshots.)
 
 ---
 
@@ -478,9 +478,9 @@ ALL of:
 
 Platform playbooks under `skills/autocraft/playbooks/` provide templates in `# Template:` sections. The Orchestrator includes these in the Tester's prompt (Step 8).
 
-**Mode A (integration tests).** Platform playbooks carry platform-specific test-code templates — e.g., web `# Template: Playwright Page Object` for browser tests, `# Template: XCTest` for pure-Swift integration tests.
+**State mode (integration tests).** Platform playbooks carry platform-specific test-code templates — e.g., web `# Template: Playwright Page Object` for browser tests, `# Template: XCTest` for pure-Swift integration tests.
 
-**Mode B (UI journeys).** No test-code template. The journey.md skeleton in Step 6 IS the template — Goal / Preconditions / Ordered steps / Acceptance criteria with PASS + EVIDENCE / Hazards. Platform specifics (mac2.sh vs Playwright MCP) live in the respective driver skill, not the playbook.
+**Screen mode (UI journeys).** No test-code template. The journey.md skeleton in Step 6 IS the template — Goal / Preconditions / Ordered steps / Acceptance criteria with PASS + EVIDENCE / Hazards. Platform specifics (mac2.sh vs Playwright MCP) live in the respective driver skill, not the playbook.
 
 ---
 
